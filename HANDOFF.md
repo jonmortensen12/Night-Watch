@@ -362,6 +362,21 @@ zoom), `why` (what got in, where) and events `shot`, `hit`, `poof`, `weak`,
 `broken`, `fixed`, `climb`, `bomb`, `blast`, `witch`, `summon`,
 `witchdown`, plus the shared `wave`, `clear`, `count`, `over`.
 
+## The page must never zoom
+
+Reported from Brave: a player got zoomed in during the bunker and could not
+get back out. The viewport tag says `user-scalable=no`, but browsers may
+ignore it (Brave or Safari on an iPhone; Brave/Chrome on Android with
+"force enable zoom"), and the bunker is played with two thumbs at once -
+which is a pinch. A script at the top of `play.html` cancels two-finger
+`touchmove`/`touchstart`, Safari's `gesture*` events and double-taps, and
+if `visualViewport.scale` still goes above 1 it rewrites the viewport tag,
+which snaps the page back. Pointer events (what the game reads) arrive
+before touch events and are not affected: checked with real multi-touch
+from Chromium's DevTools protocol, walking and firing at once (with
+`NW_TEST.sensors()` standing in for motion sensors). The sniper's button
+reads "✕ UNZOOM" while the scope is up.
+
 ## Not built yet / to check
 
 - **Never run on a real phone.** Everything is verified headless (software

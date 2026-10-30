@@ -8,6 +8,33 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>Night Watch</title>
 <link rel="manifest" href="manifest.webmanifest">
+<script>
+/* The page must never zoom. The viewport tag asks for that, but some
+   browsers let the player override it (Brave on an iPhone; Brave or Chrome
+   on Android with "force enable zoom") - and the bunker is played with two
+   thumbs at once, stick and trigger, which is exactly a pinch. Reported
+   from Brave: zoomed in mid-game, no way back, because every touch goes to
+   the game. So: two-finger movement and Safari's gesture events are
+   cancelled here, double-taps too, and if a browser zooms anyway the
+   viewport tag is rewritten, which makes it snap back. */
+(function(){
+  var opt = {passive: false};
+  function stop(e){ if(e.cancelable) e.preventDefault(); }
+  document.addEventListener('touchmove', function(e){ if(e.touches.length > 1 || (e.scale && e.scale !== 1)) stop(e); }, opt);
+  document.addEventListener('touchstart', function(e){ if(e.touches.length > 1) stop(e); }, opt);
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(t){ document.addEventListener(t, stop, opt); });
+  document.addEventListener('dblclick', stop, opt);
+  var meta = document.querySelector('meta[name=viewport]'), base = meta.getAttribute('content'), timer = 0;
+  function unzoom(){
+    meta.setAttribute('content', base.replace('maximum-scale=1,', 'maximum-scale=1.01,'));
+    setTimeout(function(){ meta.setAttribute('content', base); }, 80);
+  }
+  window.NW_UNZOOM = unzoom;
+  if(window.visualViewport) visualViewport.addEventListener('resize', function(){
+    if(visualViewport.scale > 1.02){ clearTimeout(timer); timer = setTimeout(unzoom, 250); }
+  });
+})();
+</script>
 <link rel="icon" href="icon-192.png">
 <style>
 :root { --bg:#05070f; --ink:#e8f1ff; --dim:#8aa0bf; --acc:#4dd0ff; --warn:#ff4d6a; --gold:#ffc94d; }
@@ -959,6 +986,8 @@ requestAnimationFrame(frame);
 let testTrack = 0;
 window.NW_TEST = {
   track(id){ testTrack = id; },
+  // behave as a phone with motion sensors does: the sky fires, the stick walks
+  sensors(){ dragMode = false; sensing = true; document.body.classList.remove('drag'); },
   aim(x, y, z){ if(!dragMode) useDrag(); const l = Math.hypot(x, y, z); dragYaw = Math.atan2(-x, -z); dragPitch = Math.asin(y / l); },
   fire(on){ trigger('test', !!on); },
   missile: fireMissile,

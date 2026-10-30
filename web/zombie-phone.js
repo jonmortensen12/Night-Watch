@@ -84,6 +84,8 @@ export function createZombiePhone(ctx){
     zoom = on && WEAPONS[w].key === 'sniper';
     yard.setZoom(zoom);
     $('#zzoom').classList.toggle('on', zoom);
+    // say how to get out of the scope, on the button you press to do it
+    $('#zzoom').innerHTML = zoom ? '✕<br>UNZOOM' : '🔭<br>ZOOM';
   }
   paintGuns();
   ui.querySelectorAll('#zguns button').forEach(b => b.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); SND.unlock(); setWeapon(+b.dataset.w); }));
