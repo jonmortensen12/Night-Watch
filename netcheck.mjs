@@ -2,7 +2,9 @@
 
    node netcheck.mjs            (serves web/ itself on a spare port)
 
-   Everything runs over ?local=1, so the "network" is a BroadcastChannel
+   Everything runs over ?local=1 (and ?q=low: no bloom, fewer particles -
+   several pages drawing 3D in software on one CPU starve each other
+   otherwise), so the "network" is a BroadcastChannel
    between tabs of one browser - no internet, no PeerJS broker, the same
    messages. The phones have no motion sensors here; they are aimed through
    NW_TEST, which turns the drag-to-look view, exactly what a laptop does.
@@ -36,6 +38,9 @@ const ok = (c, msg) => { console.log((c ? '  ok   ' : '  FAIL ') + msg); if(!c) 
 const errors = [];
 const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required']});
 const ctx = await browser.newContext();
+// software WebGL bakes the sky and compiles every shader on the CPU: on a
+// slow machine a page can take most of a minute to load beside the others
+ctx.setDefaultTimeout(90000);
 function watchErrors(page, who){
   page.on('pageerror', e => errors.push(who + ': ' + e.message));
   page.on('console', m => { if(m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) errors.push(who + ': ' + m.text()); });
@@ -51,7 +56,7 @@ async function phone(code, name){
   const p = await ctx.newPage();
   await p.setViewportSize({width: 390, height: 780});
   watchErrors(p, name);
-  await p.goto(BASE + 'play.html?local=1#' + code);
+  await p.goto(BASE + 'play.html?local=1&q=low#' + code);
   await p.fill('#nameIn', name);
   await p.click('#joinBtn');
   return p;
@@ -74,7 +79,7 @@ console.log('the room');
 const tv = await ctx.newPage();
 await tv.setViewportSize({width: 1280, height: 720});
 watchErrors(tv, 'TV');
-await tv.goto(BASE + 'index.html?local=1');
+await tv.goto(BASE + 'index.html?local=1&q=low');
 ok(await until(tv, () => NW_TV.state().room && NW_TV.state().room.code), 'the TV opens a room');
 const code = await tv.evaluate(() => NW_TV.state().room.code);
 ok(/^[A-Z2-9]{4}$/.test(code), 'with a four-letter code (' + code + ')');
@@ -145,7 +150,7 @@ ok(await until(tv, () => NW_TV.state().players.some(p => p.n === 'Bob' && p.w), 
 const back = await ctx.newPage();
 watchErrors(back, 'Bob again');
 await back.addInitScript(dev => sessionStorage.setItem('nwatch_dev', dev), bobDev);
-await back.goto(BASE + 'play.html?local=1#' + code);
+await back.goto(BASE + 'play.html?local=1&q=low#' + code);
 await back.fill('#nameIn', 'Bob');
 await back.click('#joinBtn');
 ok(await until(back, () => NW_TEST.state().me >= 0), 'comes back');
@@ -169,7 +174,7 @@ for(const p of [tv, ...phones]) await p.close();
 const hp = await ctx.newPage();
 await hp.setViewportSize({width: 390, height: 780});
 watchErrors(hp, 'host phone');
-await hp.goto(BASE + 'play.html?local=1');
+await hp.goto(BASE + 'play.html?local=1&q=low');
 await hp.fill('#nameIn', 'Dee');
 await hp.click('#hostBtn');
 ok(await until(hp, () => NW_TEST.state().room && NW_TEST.state().room.code), 'START A GAME ON THIS PHONE opens a room');
@@ -180,7 +185,7 @@ ok(await until(hp, () => NW_TEST.state().room.people.length === 2), 'another pho
 const watcher = await ctx.newPage();
 await watcher.setViewportSize({width: 1280, height: 720});
 watchErrors(watcher, 'watching TV');
-await watcher.goto(BASE + 'index.html?local=1&watch=' + code2);
+await watcher.goto(BASE + 'index.html?local=1&q=low&watch=' + code2);
 await hp.click('#startNow');
 ok(await until(watcher, () => NW_TV.state().phase === 'count' || NW_TV.state().phase === 'wave'), 'the watching TV follows the game');
 ok(await until(guest, () => NW_TEST.state().phase === 'wave', null, 8000), 'and the guest plays it');
@@ -191,11 +196,25 @@ for(const p of [hp, guest, watcher]) await p.close();
 const ztv = await ctx.newPage();
 await ztv.setViewportSize({width: 1280, height: 720});
 watchErrors(ztv, 'bunker TV');
-await ztv.goto(BASE + 'index.html?local=1');
+await ztv.goto(BASE + 'index.html?local=1&q=low');
 await until(ztv, () => NW_TV.state().room && NW_TV.state().room.code);
 const code3 = await ztv.evaluate(() => NW_TV.state().room.code);
-const zp = [await phone(code3, 'Fay'), await phone(code3, 'Gus')];
+await ztv.click('#modePick button[data-mode=zombie]');
+ok(await until(ztv, () => NW_TV.state().mode === 'zombie'), 'the TV picks the bunker itself, before anybody joins');
+await ztv.click('#modePick button[data-mode=space]');
+ok(await until(ztv, () => NW_TV.state().mode === 'space'), 'and back to space');
+// Fay picks the bunker on her join screen, before joining
+const fay = await ctx.newPage();
+await fay.setViewportSize({width: 390, height: 780});
+watchErrors(fay, 'Fay');
+await fay.goto(BASE + 'play.html?local=1&q=low#' + code3);
+await fay.click('#pick button[data-mode=zombie]');
+await fay.fill('#nameIn', 'Fay');
+await fay.click('#joinBtn');
+ok(await until(ztv, () => NW_TV.state().mode === 'zombie'), 'a phone picks the bunker on the join screen, and the room follows');
+const zp = [fay, await phone(code3, 'Gus')];
 ok(await until(ztv, () => NW_TV.state().room.people.length === 2), 'two phones join a new room');
+ok(await until(ztv, () => NW_TV.state().mode === 'zombie', null, 2000), 'a phone joining without picking leaves the game alone');
 await until(zp[0], () => document.querySelectorAll('#modes button').length === 2, null, 5000);
 await zp[0].click('#modes button[data-mode=zombie]');
 ok(await until(ztv, () => NW_TV.state().mode === 'zombie'), 'a phone switches the game to the bunker');

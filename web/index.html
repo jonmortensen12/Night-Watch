@@ -46,6 +46,10 @@ ol b { color: #fff; }
 .netkey { color: var(--dim); font-size: 0.9vw; }
 .hint { color: var(--dim); font-size: 1vw; margin-top: auto; }
 .hint b { color: var(--gold); }
+#modePick { display: flex; gap: 0.8vw; align-items: center; }
+#modePick span { color: var(--dim); font-size: 1.05vw; }
+#modePick button { white-space: nowrap; font-size: 1.15vw; padding: 0.8vh 1.2vw; background: #13203a; border-color: #2c4470; }
+#modePick button.sel { background: linear-gradient(180deg, #2fb8ff, #1272d6); border-color: #6fd4ff; }
 #status { color: var(--gold); font-size: 1.1vw; }
 #top { position: fixed; left: 2vw; top: 2.5vh; right: 2vw; display: flex; align-items: center; gap: 1.5vw; pointer-events: none; text-shadow: 0 2px 6px #000; }
 #top .logo { font-weight: 900; letter-spacing: 0.14em; font-size: 1.5vw; }
@@ -120,7 +124,11 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
     <li>Pistol, shotgun or <b>sniper</b> (zoom!). Hold a finger on the right to fire.</li>
     <li>Stand at a damaged wall and <b>hold REPAIR</b>. If one gets in, you lose.</li>
   </ol>
-  <div class="hint" id="modeLine" style="margin-top:0"></div>
+  <div id="modePick"><span>Game:</span>
+    <button data-mode="space">🚀 SPACE</button>
+    <button data-mode="zombie">🎃 BUNKER</button>
+    <span>(or on any phone)</span>
+  </div>
   <div class="crew" id="crew"></div>
   <div class="netkey" id="netKey"></div>
   <div class="hint" id="hint">Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).</div>
@@ -223,7 +231,7 @@ function drawRoom(){
   $('netKey').textContent = ways.length ? (ways.every(p => p.net === 'wifi') ? 'Every phone is on this Wi-Fi.' :
     ways.some(p => p.net === 'relay') ? 'Some phones are going through the Cloudflare relay.' : 'Some phones are reaching this TV over the internet, not this Wi-Fi.') : '';
   switchMode(room.mode === 'zombie' ? 'zombie' : 'space');
-  $('modeLine').innerHTML = 'Game: <b>' + (room.mode === 'zombie' ? 'BUNKER 🎃' : 'SPACE 🚀') + '</b> - change it on any phone.';
+  [...$('modePick').querySelectorAll('button')].forEach(b => b.classList.toggle('sel', b.dataset.mode === (room.mode || 'space')));
   $('hint').innerHTML = n ? 'Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).' +
     (room.best ? '<br>Best here: wave ' + room.best + ' · ' + room.bestScore.toLocaleString() + ' points' : '') : 'Waiting for phones...';
 }
@@ -447,8 +455,14 @@ function drawHud(now){
 /* ---------- sound and keys ---------- */
 function soundTap(){ SND.unlock(); setTimeout(() => $('soundPill').classList.toggle('off', SND.soundOn()), 200); }
 addEventListener('pointerdown', soundTap);
+/* the TV picks the game too: click, or 1 / 2 */
+$('modePick').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(b && host){ host.setMode(b.dataset.mode); SND.sfx('click'); }
+});
 addEventListener('keydown', e => {
   soundTap();
+  if(host && (e.key === '1' || e.key === '2')) host.setMode(e.key === '1' ? 'space' : 'zombie');
   if(e.key === 'Enter' && host) host.go();
   if(e.key === 'f' || e.key === 'F'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }
   if(e.key === 'm' || e.key === 'M'){ SND.setMusic(!SND.musicEnabled()); }

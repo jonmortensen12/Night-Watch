@@ -55,8 +55,14 @@ links a laptop to the same page.
 
 ## Two games, one room
 
-The lobby picks **Space** or **Bunker** from any phone (`mode` message;
-only between games — the results screen has a LOBBY button to get back).
+The game is **Space** or **Bunker**, picked in three places, all between
+games only (the results screen has a LOBBY button to get back):
+- the **TV lobby** (buttons, or keys 1 and 2) — before anybody has joined;
+- the **phone's join screen**, before joining: START A GAME ON THIS PHONE
+  uses it, and JOIN switches the TV's room to it — but only if it was
+  actually tapped on that screen, so a late joiner does not flip everybody
+  (remembered per phone as `nwatch_mode`);
+- the **phone's lobby sheet** once in (`mode` message).
 The host swaps `sim.js` for `zsim.js`, everybody keeps their colour, and
 each game keeps its own music choice and record (`nwatch_save`: `mode`,
 `themes`, `bests`). Every snapshot says which game it is (`s.mode`), and
