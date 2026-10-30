@@ -1,0 +1,6 @@
+{
+  "name": "night-watch",
+  "private": true,
+  "type": "module",
+  "description": "Checks only. The game itself is web/, served as plain files."
+}

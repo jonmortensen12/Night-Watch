@@ -1,0 +1,77 @@
+{
+ "themes": {
+  "nightwatch": {
+   "file": "nightwatch.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 66.50689342403628,
+   "bpm": 116,
+   "title": "Night Watch",
+   "blurb": "Strings, horns and taiko - the main theme"
+  },
+  "constellation": {
+   "file": "constellation.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 57.9,
+   "bpm": 100,
+   "title": "Constellation",
+   "blurb": "Harp, celesta and flute, still moving"
+  },
+  "redshift": {
+   "file": "redshift.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 55.952176870748296,
+   "bpm": 138,
+   "title": "Red Shift",
+   "blurb": "Taiko, low brass and trumpets - all out"
+  }
+ },
+ "loops": {
+  "lobby": {
+   "file": "lobby.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 53.63333333333333,
+   "bpm": 72
+  },
+  "boss": {
+   "file": "boss.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 41.44285714285714,
+   "bpm": 140
+  }
+ },
+ "cues": {
+  "count": {
+   "file": "count.mp3",
+   "len": 2.25
+  },
+  "wave": {
+   "file": "wave.mp3",
+   "len": 4.2
+  },
+  "clear": {
+   "file": "clear.mp3",
+   "len": 4.24
+  },
+  "bosswarn": {
+   "file": "bosswarn.mp3",
+   "len": 5.53
+  },
+  "victory": {
+   "file": "victory.mp3",
+   "len": 5.46
+  },
+  "gameover": {
+   "file": "gameover.mp3",
+   "len": 8.52
+  },
+  "record": {
+   "file": "record.mp3",
+   "len": 5.77
+  },
+  "pickup": {
+   "file": "pickup.mp3",
+   "len": 2.03
+  }
+ },
+ "credit": "Instruments: FluidR3 GM soundfont by Frank Wen (CC BY 3.0)"
+}

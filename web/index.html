@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05070f">
+<title>Night Watch</title>
+<meta property="og:title" content="Night Watch">
+<meta property="og:description" content="Your phone is a window into space. Find the enemy ships hiding all around you - and shoot them, together.">
+<meta property="og:image" content="og.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+:root { --ink:#e8f1ff; --dim:#8aa0bf; --acc:#4dd0ff; --warn:#ff4d6a; --gold:#ffc94d; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05070f; color: var(--ink); font: 18px/1.35 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; cursor: default; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#hud { pointer-events: none; }
+.panel { position: fixed; background: linear-gradient(180deg, #08101fdd, #05070fdd); border: 1px solid #2c4470; border-radius: 20px; padding: 22px 26px; backdrop-filter: blur(6px); }
+h1 { font-size: 3.4vw; letter-spacing: 0.14em; margin: 0; font-weight: 900; background: linear-gradient(180deg, #fff, #7fc8ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tag { color: var(--dim); margin: 6px 0 0; font-size: 1.15vw; }
+#lobby { left: 3vw; top: 4vh; bottom: 4vh; width: 34vw; display: flex; flex-direction: column; gap: 1.6vh; }
+#lobby.off, #over.off, #watchForm.off { display: none; }
+#qrWrap { display: flex; gap: 1.4vw; align-items: center; }
+#qr { position: static; width: 13vw; height: 13vw; background: #fff; border-radius: 12px; padding: 0.6vw; }
+.code { font-size: 4.6vw; font-weight: 900; letter-spacing: 0.2em; color: var(--acc); line-height: 1; }
+.url { color: var(--dim); font-size: 1vw; word-break: break-all; margin-top: 0.6vh; }
+ol { margin: 0; padding-left: 1.4em; font-size: 1.15vw; color: #c9d8f0; }
+ol li { margin: 0.4vh 0; }
+ol b { color: #fff; }
+.crew { display: flex; flex-wrap: wrap; gap: 0.6vw; }
+.chip { padding: 0.5vh 0.9vw; border-radius: 30px; border: 2px solid; font-weight: 800; font-size: 1.2vw; background: #ffffff0d; }
+.chip.ready::after { content: ' ✓'; }
+.chip.away { opacity: 0.4; }
+.hint { color: var(--dim); font-size: 1vw; margin-top: auto; }
+.hint b { color: var(--gold); }
+#status { color: var(--gold); font-size: 1.1vw; }
+#top { position: fixed; left: 2vw; top: 2.5vh; right: 2vw; display: flex; align-items: center; gap: 1.5vw; pointer-events: none; text-shadow: 0 2px 6px #000; }
+#top .logo { font-weight: 900; letter-spacing: 0.14em; font-size: 1.5vw; }
+#wave { font-weight: 900; font-size: 1.6vw; letter-spacing: 0.08em; color: var(--acc); }
+#hullWrap { width: 28vw; height: 1.4vh; border-radius: 1vh; background: #ffffff1a; overflow: hidden; border: 1px solid #ffffff2a; }
+#hullBar { height: 100%; width: 100%; background: linear-gradient(90deg, #36e0ff, #7cffb0); transition: width 0.25s; }
+#hullBar.low { background: linear-gradient(90deg, #ff3355, #ff9a3c); }
+#hullLbl { font-size: 1vw; color: var(--dim); letter-spacing: 0.1em; }
+#board { right: 2vw; top: 9vh; width: 20vw; padding: 1.4vh 1.2vw; }
+#board.off { display: none; }
+.pl { display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 0.7vh 0; border-bottom: 1px solid #ffffff12; }
+.pl:last-child { border: none; }
+.pl .n { font-weight: 800; font-size: 1.25vw; }
+.pl .s { font-weight: 800; font-variant-numeric: tabular-nums; font-size: 1.25vw; }
+.pl .k { color: var(--dim); font-size: 0.9vw; grid-column: 1 / 3; display: flex; gap: 0.8vw; align-items: center; }
+.heat { flex: 1; height: 0.6vh; background: #ffffff18; border-radius: 1vh; overflow: hidden; }
+.heat i { display: block; height: 100%; background: var(--acc); }
+.pl.away { opacity: 0.45; }
+#banner { position: fixed; left: 0; right: 0; top: 30vh; text-align: center; pointer-events: none; font-weight: 900; font-size: 5vw; letter-spacing: 0.14em; text-shadow: 0 0 30px #4dd0ff, 0 3px 8px #000; opacity: 0; transition: opacity 0.35s; }
+#banner small { display: block; font-size: 1.7vw; letter-spacing: 0.06em; color: var(--gold); margin-top: 1vh; }
+#banner.on { opacity: 1; }
+#callouts { position: fixed; left: 2vw; bottom: 4vh; display: flex; flex-direction: column; gap: 1vh; pointer-events: none; }
+.call { font-weight: 900; font-size: 2vw; letter-spacing: 0.04em; text-shadow: 0 2px 8px #000; animation: pop 0.3s ease-out; }
+@keyframes pop { from { transform: scale(1.3); opacity: 0; } }
+#over { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 52vw; text-align: center; }
+#over h2 { font-size: 3vw; margin: 0; letter-spacing: 0.08em; }
+#over .sub { color: var(--dim); font-size: 1.4vw; margin: 1vh 0 2vh; }
+.record { color: var(--gold); font-weight: 900; }
+table { width: 100%; border-collapse: collapse; font-size: 1.4vw; font-variant-numeric: tabular-nums; }
+td { padding: 0.9vh 0.6vw; border-bottom: 1px solid #ffffff14; text-align: right; }
+td:first-child { text-align: left; font-weight: 800; }
+th { color: var(--dim); font-weight: 600; font-size: 1vw; text-align: right; padding: 0 0.6vw; }
+.award { display: block; color: var(--gold); font-size: 1vw; }
+#soundPill { position: fixed; right: 2vw; bottom: 3vh; background: var(--gold); color: #111; font-weight: 800; padding: 1vh 1.4vw; border-radius: 30px; font-size: 1.1vw; cursor: pointer; }
+#soundPill.off { display: none; }
+#credit { position: fixed; right: 2vw; bottom: 1vh; color: #ffffff44; font-size: 0.75vw; }
+#watchForm { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 420px; text-align: center; }
+#watchForm input { font: inherit; font-size: 28px; text-transform: uppercase; letter-spacing: 0.3em; text-align: center; width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #2c4470; background: #0a1222; color: #fff; margin: 14px 0; }
+button { font: inherit; font-weight: 800; color: #fff; background: linear-gradient(180deg, #2fb8ff, #1272d6); border: 1px solid #6fd4ff; border-radius: 14px; padding: 14px 22px; cursor: pointer; }
+</style>
+<script type="importmap">{"imports": {"three": "./lib/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<canvas id="hud"></canvas>
+
+<div id="top" style="visibility:hidden">
+  <span class="logo">NIGHT WATCH</span>
+  <span id="wave"></span>
+  <span id="hullLbl">HULL</span>
+  <div id="hullWrap"><div id="hullBar"></div></div>
+</div>
+
+<div id="lobby" class="panel">
+  <div>
+    <h1>NIGHT WATCH</h1>
+    <p class="tag">Your phone is a window into space. They are all around you.</p>
+  </div>
+  <div id="qrWrap">
+    <canvas id="qr" width="400" height="400"></canvas>
+    <div><div class="code" id="code">····</div><div class="url" id="url"></div><div id="status"></div></div>
+  </div>
+  <ol>
+    <li><b>Scan</b> the code with every phone.</li>
+    <li><b>Point your phone at this TV</b> and tap LOCK FRONT, so you all share one sky.</li>
+    <li><b>Look everywhere</b> - up, behind, under the floor. <b>Hold a finger</b> on the screen to fire.</li>
+    <li>Hold your aim on one ship to <b>lock a missile</b>.</li>
+  </ol>
+  <div class="crew" id="crew"></div>
+  <div class="hint" id="hint">Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).</div>
+</div>
+
+<div id="board" class="panel off"></div>
+<div id="banner"></div>
+<div id="callouts"></div>
+
+<div id="over" class="panel off">
+  <h2 id="overTitle">THE STATION HAS FALLEN</h2>
+  <div class="sub" id="overSub"></div>
+  <table id="results"></table>
+  <div class="sub" style="margin-top:2vh">PLAY AGAIN on any phone (or Enter)</div>
+</div>
+
+<div id="watchForm" class="panel off">
+  <h2 style="margin:0">Watch a game</h2>
+  <p style="color:var(--dim)">Type the code shown on the phone that started the game.</p>
+  <form id="wf"><input id="watchCode" maxlength="4" autocomplete="off"><button type="submit">WATCH</button></form>
+  <p id="watchMsg" style="color:var(--warn)"></p>
+</div>
+
+<div id="soundPill">Tap this screen (or press a key) for sound</div>
+<div id="credit"></div>
+
+<script src="net.js"></script>
+<script src="qr.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import {World, dirWords} from './world.js';
+import {createHost, PROTO} from './host.js';
+import {COLORS, awards, TYPES} from './sim.js';
+import * as SND from './sound.js';
+
+const $ = id => document.getElementById(id);
+const isLocal = NWNet.isLocal();
+const params = new URLSearchParams(location.search);
+const low = params.get('q') === 'low';
+const world = new World($('view'), {mode: 'tv', low});
+const hud = $('hud'), hg = hud.getContext('2d');
+function sizeHud(){ hud.width = innerWidth; hud.height = innerHeight; }
+sizeHud(); addEventListener('resize', sizeHud);
+
+let S = null, room = null, host = null, watching = false, conn = null;
+
+/* The TV hosts, unless it was asked to watch a phone's game. */
+if(params.has('watch')){
+  watching = true;
+  const c = (params.get('watch') || '').toUpperCase();
+  if(c.length === 4) watch(c); else $('watchForm').classList.remove('off');
+  $('lobby').classList.add('off');
+} else {
+  host = createHost({tv: true, onSnap: s => onSnap(s), onRoom: r => { room = r; drawRoom(); }});
+}
+
+$('wf').addEventListener('submit', e => { e.preventDefault(); watch($('watchCode').value.toUpperCase().replace(/[^A-Z0-9]/g, '')); });
+let watchDev = 'tv' + Math.random().toString(36).slice(2, 10);
+function watch(code){
+  $('watchMsg').textContent = 'Finding ' + code + '...';
+  NWNet.join(code, {
+    open: c => {
+      conn = c;
+      $('watchForm').classList.add('off');
+      c.on('data', d => { if(d && d.t === 's') onSnap(d); });
+      c.on('close', () => setTimeout(() => watch(code), 1500));
+      c.send({t: 'hello', name: 'TV', dev: watchDev, proto: PROTO, role: 'watch'});
+      // a watcher says so now and then, or the host counts it as gone
+      clearInterval(watch.ping);
+      watch.ping = setInterval(() => { try { c.send({t: 'ping'}); } catch(e){} }, 1000);
+    },
+    error: t => { $('watchForm').classList.remove('off'); $('watchMsg').textContent = t === 'peer-unavailable' ? 'No game called ' + code : 'Could not connect: ' + t; }
+  });
+}
+
+function drawRoom(){
+  if(!room) return;
+  $('code').textContent = room.code || '····';
+  $('status').textContent = room.status || '';
+  const url = controllerUrl();
+  $('url').textContent = room.code ? url.replace(/^https?:\/\//, '') : '';
+  if(room.code && qrFor !== url){ qrFor = url; drawQr($('qr'), url); }
+  const c = $('crew');
+  c.innerHTML = '';
+  room.people.filter(p => p.role === 'player').forEach(p => {
+    const s = document.createElement('span');
+    s.className = 'chip' + (p.r ? ' ready' : '') + (p.w ? ' away' : '');
+    s.style.borderColor = s.style.color = COLORS[p.c] || '#fff';
+    s.textContent = p.n;
+    c.appendChild(s);
+  });
+  const n = room.people.filter(p => p.role === 'player' && !p.w).length;
+  $('hint').innerHTML = n ? 'Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).' +
+    (room.best ? '<br>Best here: wave ' + room.best + ' · ' + room.bestScore.toLocaleString() + ' points' : '') : 'Waiting for phones...';
+}
+let qrFor = '';
+function controllerUrl(){
+  const base = location.href.split('#')[0].split('?')[0].replace(/[^/]*$/, '');
+  return base + 'play.html' + (isLocal ? '?local=1' : '') + '#' + (room && room.code || '');
+}
+function drawQr(cv, text){
+  const m = qrMatrix(text, 'M'), n = m.length, g = cv.getContext('2d');
+  const s = Math.floor(cv.width / (n + 2));
+  g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#000';
+  const o = Math.floor((cv.width - s * n) / 2);
+  for(let y = 0; y < n; y++) for(let x = 0; x < n; x++) if(m[y][x]) g.fillRect(o + x * s, o + y * s, s, s);
+}
+
+/* ---------- the game, as the TV shows it ---------- */
+let phase = 'lobby', bannerT = 0;
+function onSnap(s){
+  const was = phase;
+  S = s;
+  if(s.ro && watching){ room = s.ro; }
+  world.feed(s);
+  phase = s.ph;
+  $('lobby').classList.toggle('off', phase !== 'lobby' || watching);
+  $('board').classList.toggle('off', phase === 'lobby');
+  $('top').style.visibility = phase === 'lobby' ? 'hidden' : '';
+  $('over').classList.toggle('off', phase !== 'over');
+  $('wave').textContent = phase === 'lobby' ? '' : s.w ? 'WAVE ' + s.w : 'GET READY';
+  $('hullBar').style.width = Math.max(0, s.hull) + '%';
+  $('hullBar').classList.toggle('low', s.hull < 35);
+  if(phase === 'count') banner(String(Math.ceil(s.pt)), 'Point at the TV and tap LOCK FRONT');
+  else if(phase === 'break') banner('WAVE ' + s.w + ' CLEARED', 'Next wave in ' + Math.ceil(s.pt));
+  if(phase === 'over' && was !== 'over') results();
+  board();
+}
+
+function board(){
+  const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
+  const b = $('board');
+  while(b.children.length < pl.length){
+    const d = document.createElement('div'); d.className = 'pl';
+    d.innerHTML = '<span class="n"></span><span class="s"></span><span class="k"><span class="kk"></span><span class="heat"><i></i></span><span class="mm"></span></span>';
+    b.appendChild(d);
+  }
+  while(b.children.length > pl.length) b.lastChild.remove();
+  pl.forEach((p, i) => {
+    const d = b.children[i];
+    d.classList.toggle('away', !!p.w);
+    const n = d.querySelector('.n');
+    n.textContent = p.n; n.style.color = COLORS[p.c];
+    d.querySelector('.s').textContent = p.s.toLocaleString();
+    d.querySelector('.kk').textContent = p.k + ' kills';
+    const h = d.querySelector('.heat i');
+    h.style.width = p.h + '%'; h.style.background = p.l ? '#ff3355' : p.h > 70 ? '#ff7a3d' : COLORS[p.c];
+    d.querySelector('.mm').textContent = '▲'.repeat(p.m);
+  });
+}
+
+function banner(t, sub){
+  const key = t + '|' + sub;
+  if(banner.last !== key){
+    $('banner').innerHTML = '';
+    $('banner').appendChild(document.createTextNode(t));
+    if(sub){ const sm = document.createElement('small'); sm.textContent = sub; $('banner').appendChild(sm); }
+    banner.last = key;
+  }
+  $('banner').classList.add('on');
+  bannerT = performance.now() + 1300;
+}
+
+function call(text, color){
+  const d = document.createElement('div');
+  d.className = 'call'; d.textContent = text; d.style.color = color || '#fff';
+  $('callouts').appendChild(d);
+  while($('callouts').children.length > 4) $('callouts').firstChild.remove();
+  setTimeout(() => d.remove(), 4200);
+}
+
+function results(){
+  const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
+  const aw = awards(pl);
+  $('overSub').innerHTML = '';
+  $('overSub').appendChild(document.createTextNode('Held out to wave ' + S.w + ' · ' + pl.reduce((a, p) => a + p.s, 0).toLocaleString() + ' points together. '));
+  if(S.nr){ const r = document.createElement('span'); r.className = 'record'; r.textContent = 'NEW RECORD!'; $('overSub').appendChild(r); }
+  const t = $('results');
+  t.innerHTML = '<tr><th></th><th>score</th><th>kills</th><th>torpedoes</th><th>aim</th></tr>';
+  pl.forEach(p => {
+    const tr = document.createElement('tr');
+    const n = document.createElement('td'); n.style.color = COLORS[p.c]; n.textContent = p.n;
+    if(aw[p.id]){ const a = document.createElement('span'); a.className = 'award'; a.textContent = aw[p.id]; n.appendChild(a); }
+    tr.appendChild(n);
+    for(const v of [p.s.toLocaleString(), p.k, p.tp, p.sh ? Math.round(100 * p.hi / p.sh) + '%' : '-']){
+      const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+    }
+    t.appendChild(tr);
+  });
+}
+
+world.onBolt = () => { if(Math.random() < 0.5) SND.sfx('enemyShot', null, 0.4); };
+world.onEvent = ev => {
+  const k = ev[0];
+  if(k === 'zap') SND.sfx('laserFar', null, 0.35);
+  else if(k === 'boom'){
+    SND.sfx(ev[2] === 'boss' ? 'bigBoom' : 'boom', null, ev[2] === 'boss' ? 1 : 0.5);
+    const who = ev[6] ? S && S.pl.find(p => p.c === ev[6] - 1) : null;
+    if(ev[2] === 'boss'){ banner('DREADNOUGHT DESTROYED', who ? 'Final blow: ' + who.n : ''); SND.cue('victory'); }
+    else if(ev[2] === 'torpedo' && who) call(who.n + ' stopped a torpedo', COLORS[who.c]);
+  } else if(k === 'hull'){ SND.sfx('hull', null, 0.6); }
+  else if(k === 'torp'){
+    const p = world.posOf(ev[1]);
+    if(p) call('TORPEDO - ' + dirWords(p.x, p.y, p.z), '#ff5ab0');
+    SND.sfx('torpedo', null, 0.5);
+  } else if(k === 'boss'){
+    SND.cue('bosswarn');
+    setTimeout(() => { const b = S && S.boss && world.posOf(S.boss); banner('DREADNOUGHT', b ? 'Coming in ' + dirWords(b.x, b.y, b.z) + ' - shoot its turrets' : 'Shoot its turrets'); }, 400);
+  } else if(k === 'shield'){ SND.sfx('shieldDown', null, 0.8); banner('SHIELD DOWN', 'Hit the core!'); }
+  else if(k === 'wave'){ SND.cue('wave'); banner('WAVE ' + ev[1], ev[2] ? 'Dreadnought inbound' : ''); }
+  else if(k === 'clear') SND.cue('clear');
+  else if(k === 'over') SND.cue(S && S.nr ? 'record' : 'gameover');
+  else if(k === 'count') SND.cue('count');
+  else if(k === 'pick'){
+    SND.cue('pickup') || SND.sfx('pickup');
+    const who = S && S.pl.find(p => p.c === ev[2]);
+    call((who ? who.n + ': ' : '') + ({repair: 'hull repaired', rapid: 'RAPID FIRE for everyone', missiles: 'missiles refilled'}[ev[1]] || 'supplies'), '#5cff8a');
+  } else if(k === 'crate'){
+    const p = world.posOf(ev[1]);
+    if(p) call('Supply drone - ' + dirWords(p.x, p.y, p.z), '#5cff8a');
+  }
+};
+
+/* brackets round every enemy, so the room can see the small ones */
+const TYPE_COL = {dart: '#ff5a4a', raider: '#ff9a3a', bomber: '#c070ff', phantom: '#40fff0', torpedo: '#ff3a9a', crate: '#5cff8a', turret: '#ff4a3a', boss: '#ff3a3a'};
+function drawHud(now){
+  const g = hg, W = innerWidth, H = innerHeight;
+  g.clearRect(0, 0, W, H);
+  if(phase === 'lobby') return;
+  for(const e of world.threats()){
+    if(e.type === 'phantom' && e.vis < 0.3) continue;
+    const p = world.project(e.d);
+    if(!p.on) continue;
+    const s = e.type === 'boss' ? 60 : e.type === 'turret' ? 16 : e.type === 'bomber' ? 20 : 13;
+    g.strokeStyle = TYPE_COL[e.type]; g.lineWidth = 2; g.globalAlpha = 0.8;
+    const k = s * 0.45;
+    g.beginPath();
+    for(const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]){
+      g.moveTo(p.x + sx * s, p.y + sy * (s - k)); g.lineTo(p.x + sx * s, p.y + sy * s); g.lineTo(p.x + sx * (s - k), p.y + sy * s);
+    }
+    g.stroke();
+    if(e.type === 'torpedo'){ g.fillStyle = TYPE_COL.torpedo; g.font = '800 13px system-ui'; g.textAlign = 'center'; g.fillText('TORPEDO', p.x, p.y - s - 6); }
+    if(e.type === 'boss' || e.type === 'bomber'){
+      g.fillStyle = '#0009'; g.fillRect(p.x - s, p.y + s + 5, s * 2, 5);
+      g.fillStyle = TYPE_COL[e.type]; g.fillRect(p.x - s, p.y + s + 5, s * 2 * e.hp, 5);
+    }
+    g.globalAlpha = 1;
+  }
+}
+
+/* ---------- sound and keys ---------- */
+function soundTap(){ SND.unlock(); setTimeout(() => $('soundPill').classList.toggle('off', SND.soundOn()), 200); }
+addEventListener('pointerdown', soundTap);
+addEventListener('keydown', e => {
+  soundTap();
+  if(e.key === 'Enter' && host) host.go();
+  if(e.key === 'f' || e.key === 'F'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }
+  if(e.key === 'm' || e.key === 'M'){ SND.setMusic(!SND.musicEnabled()); }
+});
+
+function frame(){
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  world.render();
+  drawHud(now);
+  if(now > bannerT) $('banner').classList.remove('on');
+  const theme = room && room.theme;
+  const want = phase === 'lobby' ? (theme && theme !== 'off' && room.themePicked ? theme : 'lobby') : phase === 'over' ? null :
+    S && S.boss ? 'boss' : theme === 'off' ? null : theme || 'nightwatch';
+  SND.music(want);
+  const cr = SND.musicCredit();
+  if(cr && !$('credit').textContent) $('credit').textContent = cr;
+}
+requestAnimationFrame(frame);
+setInterval(() => $('soundPill').classList.toggle('off', SND.soundOn()), 1000);
+
+window.NW_TV = {host: () => host, state: () => ({phase, wave: S && S.w, hull: S && S.hull, room, players: S && S.pl, ents: world.ents.size})};
+</script>
+</body>
+</html>

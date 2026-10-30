@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05070f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Night Watch</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+:root { --bg:#05070f; --ink:#e8f1ff; --dim:#8aa0bf; --acc:#4dd0ff; --warn:#ff4d6a; --gold:#ffc94d; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 16px/1.35 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#hud { pointer-events: none; }
+.scr { position: fixed; inset: 0; display: none; z-index: 10; }
+.scr.on { display: flex; }
+button { font: inherit; font-weight: 700; color: var(--ink); background: #13203a; border: 1px solid #2c4470; border-radius: 14px; padding: 14px 18px; cursor: pointer; }
+button:active { transform: scale(0.97); }
+button.big { font-size: 20px; padding: 18px; width: 100%; }
+button.go { background: linear-gradient(180deg, #2fb8ff, #1272d6); border-color: #6fd4ff; color: #fff; box-shadow: 0 0 24px #1a8cff66; }
+button.alt { background: #0d1626; }
+button:disabled { opacity: 0.4; }
+input { font: inherit; font-size: 18px; width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #2c4470; background: #0a1222; color: var(--ink); text-transform: none; }
+#codeIn { text-transform: uppercase; letter-spacing: 0.3em; font-weight: 700; text-align: center; }
+label { display: block; color: var(--dim); font-size: 13px; margin: 14px 0 6px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* joining */
+#join { align-items: center; justify-content: center; padding: 24px; background: radial-gradient(ellipse at 50% 20%, #142a52 0%, #05070f 70%); overflow-y: auto; touch-action: pan-y; }
+.card { width: 100%; max-width: 420px; }
+h1 { font-size: 44px; letter-spacing: 0.12em; margin: 0 0 4px; text-align: center; font-weight: 900; background: linear-gradient(180deg, #fff, #7fc8ff); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: 0 0 30px #4dd0ff44; }
+.tag { text-align: center; color: var(--dim); margin: 0 0 18px; }
+.or { text-align: center; color: var(--dim); margin: 16px 0 10px; font-size: 13px; }
+.msg { min-height: 1.4em; color: var(--warn); margin: 10px 0 0; text-align: center; }
+.small { font-size: 13px; color: var(--dim); text-align: center; margin-top: 18px; }
+.small a { color: var(--acc); }
+
+/* lock-on */
+#lockScr { flex-direction: column; align-items: center; justify-content: flex-end; padding: 20px 20px calc(24px + env(safe-area-inset-bottom)); pointer-events: none; }
+#lockScr .panel { pointer-events: auto; background: #05070fcc; border: 1px solid #2c4470; border-radius: 18px; padding: 16px; width: 100%; max-width: 440px; text-align: center; backdrop-filter: blur(6px); }
+#lockScr h2 { margin: 0 0 6px; font-size: 22px; }
+#lockScr p { margin: 0 0 12px; color: var(--dim); }
+.reticle { position: fixed; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border: 2px dashed #7fe0ff; border-radius: 50%; animation: spin 6s linear infinite; pointer-events: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* in game */
+#top { position: fixed; left: 0; right: 0; top: 0; z-index: 5; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; display: flex; gap: 10px; align-items: center; pointer-events: none; text-shadow: 0 1px 4px #000; }
+#hullWrap { flex: 1; height: 12px; border-radius: 6px; background: #ffffff1a; overflow: hidden; border: 1px solid #ffffff22; }
+#hullBar { height: 100%; width: 100%; background: linear-gradient(90deg, #36e0ff, #7cffb0); transition: width 0.2s; }
+#hullBar.low { background: linear-gradient(90deg, #ff3355, #ff9a3c); }
+#wave { font-weight: 800; letter-spacing: 0.08em; font-size: 14px; }
+#score { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 60px; text-align: right; }
+.icon { position: fixed; z-index: 6; width: 52px; height: 52px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; background: #0b1424cc; border: 1px solid #2c4470; }
+#lockBtn { left: 12px; top: calc(40px + env(safe-area-inset-top)); font-size: 12px; width: auto; border-radius: 26px; padding: 0 14px; letter-spacing: 0.05em; }
+#musicBtn { right: 12px; top: calc(40px + env(safe-area-inset-top)); }
+#missileBtn { right: 16px; bottom: calc(24px + env(safe-area-inset-bottom)); width: 86px; height: 86px; font-size: 13px; flex-direction: column; letter-spacing: 0.06em; }
+#missileBtn.ready { background: #ff2d6acc; border-color: #ff9ab8; box-shadow: 0 0 26px #ff2d6a; }
+#missileBtn b { font-size: 22px; }
+#fireBtn { left: 16px; bottom: calc(24px + env(safe-area-inset-bottom)); width: 96px; height: 96px; font-size: 16px; display: none; background: #ff6a3dcc; }
+body.drag #fireBtn { display: flex; }
+#banner { position: fixed; left: 0; right: 0; top: 24%; z-index: 7; text-align: center; pointer-events: none; font-weight: 900; font-size: 34px; letter-spacing: 0.12em; text-shadow: 0 0 20px #4dd0ff, 0 2px 4px #000; opacity: 0; transition: opacity 0.3s; }
+#banner small { display: block; font-size: 16px; letter-spacing: 0.06em; font-weight: 700; color: var(--gold); margin-top: 6px; text-shadow: 0 2px 4px #000; }
+#banner.on { opacity: 1; }
+#callout { position: fixed; left: 0; right: 0; bottom: calc(130px + env(safe-area-inset-bottom)); z-index: 7; text-align: center; pointer-events: none; font-weight: 800; font-size: 18px; color: #ff6ad5; text-shadow: 0 2px 6px #000; }
+#toast { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); z-index: 8; background: #0b1424ee; border: 1px solid #2c4470; padding: 10px 16px; border-radius: 12px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+#toast.on { opacity: 1; }
+#dot { position: fixed; right: 72px; top: calc(56px + env(safe-area-inset-top)); width: 10px; height: 10px; border-radius: 50%; background: #3cff8a; z-index: 6; box-shadow: 0 0 8px #3cff8a; }
+#dot.off { background: #ff4d6a; box-shadow: 0 0 8px #ff4d6a; }
+#note { position: fixed; left: 0; right: 0; top: calc(96px + env(safe-area-inset-top)); z-index: 9; text-align: center; pointer-events: none; }
+#note span { background: #ff4d6add; padding: 6px 12px; border-radius: 10px; font-weight: 700; pointer-events: auto; }
+#vignette { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, #ff0030aa 100%); transition: opacity 0.15s; }
+
+/* the lobby and the results: a sheet over the sky */
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9; max-height: 72%; overflow-y: auto; touch-action: pan-y; background: linear-gradient(180deg, #070c18ee, #05070ff8); border-top: 1px solid #2c4470; border-radius: 22px 22px 0 0; padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); display: none; }
+.sheet.on { display: block; }
+.sheet h2 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.06em; }
+.sheet .sub { color: var(--dim); margin: 0 0 12px; font-size: 14px; }
+.crew { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.chip { padding: 6px 10px; border-radius: 20px; background: #ffffff10; border: 1px solid; font-weight: 700; font-size: 14px; }
+.chip.ready::after { content: ' ✓'; }
+.chip.away { opacity: 0.45; }
+.row { display: flex; gap: 8px; margin-top: 10px; }
+.row > * { flex: 1; }
+.themes { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.themes button { padding: 8px 10px; font-size: 13px; flex: 1; min-width: 30%; }
+.themes button.sel { background: #1d4f8a; border-color: #6fd4ff; }
+#qrBox { display: none; text-align: center; margin: 6px 0 10px; }
+#qrBox canvas { position: static; width: 168px; height: 168px; background: #fff; border-radius: 10px; padding: 8px; display: inline-block; }
+#qrBox .code { font-size: 30px; letter-spacing: 0.3em; font-weight: 900; color: var(--acc); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+td { padding: 6px 4px; border-bottom: 1px solid #ffffff12; font-size: 14px; }
+td.n { font-weight: 800; }
+td.r { text-align: right; }
+.award { color: var(--gold); font-size: 12px; font-weight: 700; display: block; }
+.record { color: var(--gold); font-weight: 900; letter-spacing: 0.08em; }
+</style>
+<script type="importmap">{"imports": {"three": "./lib/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<canvas id="hud"></canvas>
+<div id="vignette"></div>
+
+<div id="join" class="scr on">
+  <div class="card">
+    <h1>NIGHT WATCH</h1>
+    <p class="tag">Your phone is a window into space. Find them. Shoot them.</p>
+    <form id="joinForm" autocomplete="off">
+      <label for="nameIn">Your name</label>
+      <input id="nameIn" maxlength="14" placeholder="Name" enterkeyhint="next">
+      <label for="codeIn">Room code (on the TV)</label>
+      <input id="codeIn" maxlength="4" placeholder="ABCD" autocapitalize="characters" enterkeyhint="go">
+      <div style="height:14px"></div>
+      <button class="big go" id="joinBtn" type="submit">JOIN</button>
+    </form>
+    <p class="msg" id="joinMsg"></p>
+    <div class="or">— no TV? —</div>
+    <button class="big alt" id="hostBtn" type="button">START A GAME ON THIS PHONE</button>
+    <p class="small">Best on the floor or a swivel chair: enemies come from every direction, including under you.<br>Showing it on a TV? Open <a href="./" id="tvLink">the game</a> on the TV.</p>
+  </div>
+</div>
+
+<div id="lockScr" class="scr">
+  <div class="reticle"></div>
+  <div class="panel">
+    <h2 id="lockTitle">Point at the TV</h2>
+    <p id="lockText">Everyone points at the same thing so you all share one sky. No TV? Agree on something in the room to call FRONT.</p>
+    <button class="big go" id="lockGo">LOCK FRONT</button>
+  </div>
+</div>
+
+<div id="game" class="scr" style="pointer-events:none">
+</div>
+<div id="top" style="display:none">
+  <span id="wave">LOBBY</span>
+  <div id="hullWrap"><div id="hullBar"></div></div>
+  <span id="score">0</span>
+</div>
+<button id="lockBtn" class="icon" style="display:none">⌖ FRONT</button>
+<button id="musicBtn" class="icon" style="display:none">♪</button>
+<div id="dot" style="display:none"></div>
+<button id="missileBtn" class="icon" style="display:none"><b id="mCount">3</b>MISSILE</button>
+<button id="fireBtn" class="icon">FIRE</button>
+<div id="banner"></div>
+<div id="callout"></div>
+<div id="toast"></div>
+<div id="note"></div>
+
+<div id="lobby" class="sheet">
+  <h2>Night Watch</h2>
+  <p class="sub" id="lobbySub">Look around: the whole sky is yours. Tap READY when you are.</p>
+  <div id="qrBox"><canvas id="qr" width="168" height="168"></canvas><div class="code" id="qrCode"></div><div class="sub">Friends scan this, or open the game and type the code</div></div>
+  <div class="crew" id="crew"></div>
+  <label>Music</label>
+  <div class="themes" id="themes"></div>
+  <div class="row"><button class="big go" id="readyBtn">READY</button></div>
+  <div class="row" id="hostRow" style="display:none"><button class="big alt" id="startNow">START NOW</button></div>
+  <p class="small" id="record"></p>
+</div>
+
+<div id="over" class="sheet">
+  <h2 id="overTitle">The station has fallen</h2>
+  <p class="sub" id="overSub"></p>
+  <table id="results"></table>
+  <div class="row"><button class="big go" id="againBtn" disabled>PLAY AGAIN</button></div>
+</div>
+
+<script src="net.js"></script>
+<script src="qr.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import {World, dirWords} from './world.js';
+import {createHost, PROTO} from './host.js';
+import {COLORS, LASER, MISSILE, TYPES} from './sim.js';
+import * as SND from './sound.js';
+
+const $ = id => document.getElementById(id);
+const isLocal = NWNet.isLocal();
+function box(){ return isLocal ? sessionStorage : localStorage; }
+function store(k, v){ try { box().setItem(k, v); } catch(e){} }
+function recall(k){ try { return box().getItem(k); } catch(e){ return null; } }
+let devId = recall('nwatch_dev');
+if(!devId){ devId = 'd' + Math.random().toString(36).slice(2, 12); store('nwatch_dev', devId); }
+
+/* ---------- the view ---------- */
+const low = /[?&]q=low/.test(location.search);
+const world = new World($('view'), {mode: 'phone', low});
+const hud = $('hud'), hg = hud.getContext('2d');
+function sizeHud(){ const d = Math.min(2, devicePixelRatio || 1); hud.width = innerWidth * d; hud.height = innerHeight * d; hg.setTransform(d, 0, 0, d, 0, 0); }
+sizeHud(); addEventListener('resize', sizeHud);
+
+/* ---------- where the phone points ----------
+   deviceorientation, turned into a camera the way three.js's old
+   DeviceOrientationControls did. Its yaw has no meaning of its own (it is
+   wherever the phone happened to be pointing when the sensor started), so
+   LOCK FRONT turns the whole sky round until the direction the phone is
+   pointing becomes -z: the TV, for everybody, whichever way each phone
+   started. Up and down come from gravity and need no lock. */
+const Y = new THREE.Vector3(0, 1, 0), ZEE = new THREE.Vector3(0, 0, 1);
+const sensorQ = new THREE.Quaternion(), yawQ = new THREE.Quaternion(), viewQ = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const eul = new THREE.Euler(), q0 = new THREE.Quaternion();
+let sensing = false, dragMode = false, lockedOnce = false;
+let dragYaw = 0, dragPitch = 0;
+function screenAngle(){ return ((screen.orientation && screen.orientation.angle) || window.orientation || 0) * Math.PI / 180; }
+addEventListener('deviceorientation', e => {
+  if(e.alpha == null || dragMode) return;
+  sensing = true;
+  const D = Math.PI / 180;
+  eul.set(e.beta * D, e.alpha * D, -e.gamma * D, 'YXZ');
+  sensorQ.setFromEuler(eul);
+  sensorQ.multiply(q1);
+  sensorQ.multiply(q0.setFromAxisAngle(ZEE, -screenAngle()));
+});
+
+function askMotion(){
+  // iOS asks once, and only from inside a tap
+  try {
+    if(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function')
+      return DeviceOrientationEvent.requestPermission().then(r => r === 'granted').catch(() => false);
+  } catch(e){}
+  return Promise.resolve(true);
+}
+
+function lockFront(){
+  if(dragMode){ dragYaw = 0; dragPitch = 0; toast('Front reset'); return; }
+  const f = new THREE.Vector3(0, 0, -1).applyQuaternion(sensorQ);
+  if(Math.abs(f.y) > 0.9){ toast('Hold the phone more level, pointing at FRONT'); return false; }
+  yawQ.setFromAxisAngle(Y, Math.atan2(f.x, -f.z));
+  lockedOnce = true;
+  buzz(30);
+  toast('Front locked');
+  return true;
+}
+
+function useDrag(why){
+  dragMode = true;
+  document.body.classList.add('drag');
+  // nothing to point: front is wherever the view starts
+  $('lockScr').classList.remove('on');
+  if(why) toast(why);
+}
+
+const fwd = new THREE.Vector3(), upv = new THREE.Vector3();
+function updateView(){
+  if(dragMode){
+    eul.set(dragPitch, dragYaw, 0, 'YXZ');
+    viewQ.setFromEuler(eul);
+  } else {
+    const target = q0.copy(yawQ).multiply(sensorQ);
+    viewQ.slerp(target, 0.65);
+  }
+  world.setView(viewQ);
+  fwd.set(0, 0, -1).applyQuaternion(viewQ);
+  upv.set(0, 1, 0).applyQuaternion(viewQ);
+  SND.listen(fwd, upv);
+}
+
+/* drag to look: laptops, and phones without motion sensors */
+let dragPtr = null, dragX = 0, dragY = 0;
+$('view').addEventListener('pointerdown', e => {
+  SND.unlock();
+  if(dragMode){
+    dragPtr = e.pointerId; dragX = e.clientX; dragY = e.clientY;
+    $('view').setPointerCapture(e.pointerId);
+    return;
+  }
+  trigger(e.pointerId, true);
+});
+$('view').addEventListener('pointermove', e => {
+  if(!dragMode || e.pointerId !== dragPtr) return;
+  const k = (world.cam.fov * Math.PI / 180) / innerHeight;
+  dragYaw += (e.clientX - dragX) * k;
+  dragPitch = Math.max(-1.55, Math.min(1.55, dragPitch + (e.clientY - dragY) * k));
+  dragX = e.clientX; dragY = e.clientY;
+});
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => $('view').addEventListener(t, e => {
+  if(e.pointerId === dragPtr) dragPtr = null;
+  trigger(e.pointerId, false);
+}));
+
+/* the trigger: any finger on the sky fires (with sensors); FIRE otherwise */
+const fingers = new Set();
+let firing = false;
+function trigger(id, down){
+  if(down) fingers.add(id); else fingers.delete(id);
+  setFiring(fingers.size > 0);
+}
+function setFiring(f){
+  if(f === firing) return;
+  firing = f;
+  sendIn();
+}
+const fb = $('fireBtn');
+fb.addEventListener('pointerdown', e => { e.preventDefault(); fb.setPointerCapture(e.pointerId); trigger('fb' + e.pointerId, true); });
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => fb.addEventListener(t, e => trigger('fb' + e.pointerId, false)));
+addEventListener('keydown', e => {
+  if(e.target.tagName === 'INPUT') return;
+  if(e.code === 'Space'){ e.preventDefault(); trigger('key', true); }
+  if(e.code === 'KeyM') fireMissile();
+  if(e.code === 'KeyF') lockFront();
+});
+addEventListener('keyup', e => { if(e.code === 'Space') trigger('key', false); });
+function releaseAll(){ fingers.clear(); setFiring(false); }
+
+/* ---------- joining ---------- */
+let conn = null, handle = null, code = '', myName = recall('nwatch_name') || '';
+let host = null, localLink = null, joined = false, retries = 0, retryTimer = null;
+let me = {c: -1}, S = null, room = null, roomTv = true;
+$('nameIn').value = myName;
+const hashCode = (location.hash || '').replace('#', '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+$('codeIn').value = hashCode;
+$('tvLink').href = './' + (isLocal ? '?local=1' : '');
+
+function readName(){
+  myName = $('nameIn').value.trim().slice(0, 14) || 'Gunner';
+  store('nwatch_name', myName);
+}
+
+function begin(){
+  SND.unlock();
+  // Pointing a phone at the ceiling or the floor makes it think it has been
+  // turned sideways, and the screen flips mid-fight. Android lets a
+  // fullscreen page lock that; an iPhone needs its own rotation lock.
+  try {
+    const el = document.documentElement;
+    if(el.requestFullscreen && !matchMedia('(pointer:fine)').matches)
+      el.requestFullscreen({navigationUI: 'hide'}).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait')).catch(() => {});
+  } catch(e){}
+  // the sensors' answer comes later; ask while the tap is still the tap
+  askMotion().then(ok => {
+    if(!ok){ useDrag('Motion was not allowed: drag to look around'); return; }
+    setTimeout(() => { if(!sensing) useDrag(matchMedia('(pointer:fine)').matches ? 'No motion sensors here: drag to look, SPACE fires' : 'No motion sensors: drag to look'); }, 1500);
+  });
+}
+
+$('joinForm').addEventListener('submit', e => {
+  e.preventDefault();
+  readName();
+  code = $('codeIn').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if(code.length !== 4){ $('joinMsg').textContent = 'The room code is the four letters on the TV.'; return; }
+  begin();
+  connect(false);
+});
+
+$('hostBtn').addEventListener('click', () => {
+  readName();
+  begin();
+  roomTv = false;
+  host = createHost({tv: false, onRoom: r => { room = r; drawRoom(); }});
+  localLink = host.local(myName, devId, onHost);
+  joined = true;
+  $('dot').classList.remove('off');
+  enterGame();
+  SND.setMusic(true);
+  musicBtn();
+});
+
+function connect(auto){
+  try { if(handle) handle.destroy(); } catch(e){}
+  conn = null;
+  clearTimeout(retryTimer);
+  if(!auto){ $('joinBtn').disabled = true; $('joinMsg').textContent = 'Finding room ' + code + '...'; }
+  handle = NWNet.join(code, {
+    open: c => {
+      conn = c; retries = 0;
+      c.on('data', onHost);
+      c.on('close', dropped);
+      c.send({t: 'hello', name: myName, dev: devId, proto: PROTO, role: 'player'});
+      $('joinBtn').disabled = false; $('joinMsg').textContent = '';
+      $('dot').classList.remove('off');
+      note('');
+      if(!joined){ joined = true; enterGame(); }
+      keepAwake();
+    },
+    error: t => {
+      if(auto || joined) return later();
+      $('joinBtn').disabled = false;
+      $('joinMsg').textContent =
+        t === 'peer-unavailable' ? 'No room called ' + code + '. Check the code on the TV.' :
+        t === 'timeout' ? 'Timed out. Is the TV showing this code?' :
+        t === 'library' ? 'Could not load the connection library. This needs internet.' :
+        t === 'browser-incompatible' ? 'This browser cannot connect (no WebRTC).' :
+        'Connection problem: ' + t;
+    }
+  });
+}
+function later(){
+  conn = null;
+  $('dot').classList.add('off');
+  releaseAll();
+  if(retries > 10){ note('Lost the game. Tap to rejoin.'); return; }
+  note('Reconnecting...');
+  const wait = Math.min(8000, 700 * Math.pow(2, Math.min(4, retries++)));
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => connect(true), wait);
+}
+function dropped(){ later(); }
+$('note').addEventListener('click', () => { retries = 0; connect(true); });
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible'){
+    keepAwake();
+    if(joined && !conn && !host){ retries = 0; connect(true); }
+  } else releaseAll();
+});
+let wake = null;
+async function keepAwake(){
+  try { if(navigator.wakeLock && !wake){ wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch(e){}
+}
+
+function tx(m){
+  if(localLink){ localLink.send(m); return; }
+  if(conn){ try { conn.send(m); } catch(e){} }
+}
+
+function enterGame(){
+  $('join').classList.remove('on');
+  ['top', 'lockBtn', 'musicBtn', 'dot', 'missileBtn'].forEach(id => $(id).style.display = '');
+  keepAwake();
+  if(!dragMode){
+    $('lockScr').classList.add('on');
+    $('lockTitle').textContent = roomTv ? 'Point at the TV' : 'Point at FRONT';
+    $('lockText').textContent = roomTv
+      ? 'Everyone points at the same TV, so you all share one sky. You can do this again any time with ⌖ FRONT.'
+      : 'Agree on something in the room - a door, a lamp - and everyone points at it. That is FRONT. Re-do it any time with ⌖ FRONT.';
+    if(/iPhone|iPad/.test(navigator.userAgent)) $('lockText').textContent += ' Tip: turn on Rotation Lock in Control Centre, or the screen flips when you look straight up.';
+  }
+  location.hash = code || '';
+}
+$('lockGo').addEventListener('click', () => {
+  if(dragMode || lockFront() !== false) $('lockScr').classList.remove('on');
+});
+$('lockBtn').addEventListener('click', () => lockFront());
+
+function musicBtn(){ $('musicBtn').style.opacity = SND.musicEnabled() ? 1 : 0.45; }
+$('musicBtn').addEventListener('click', () => { SND.unlock(); SND.setMusic(!SND.musicEnabled()); musicBtn(); });
+
+/* ---------- what the host says ---------- */
+let lastSnap = 0;
+function onHost(d){
+  if(!d || typeof d !== 'object') return;
+  if(d.t === 'host'){
+    if(d.min > PROTO){ location.reload(); return; }
+    roomTv = !!d.tv;
+    // a phone in a room with a TV leaves the music to the TV
+    if(!host && roomTv) SND.setMusic(false);
+    musicBtn();
+    if($('lockScr').classList.contains('on')) $('lockTitle').textContent = roomTv ? 'Point at the TV' : 'Point at FRONT';
+  } else if(d.t === 'you'){
+    me.c = d.c; me.id = d.id;
+    world.setMe(d.c);
+    $('wave').style.color = COLORS[d.c];
+  } else if(d.t === 's'){
+    S = d; lastSnap = performance.now();
+    if(d.ro){ room = d.ro; drawRoom(); }
+    world.feed(d);
+    state();
+  }
+}
+
+/* ---------- the game, as this phone sees it ---------- */
+let phase = 'lobby', heat = 0, hot = false, cd = 0, side = 1;
+let lockId = 0, lockT = 0, lockLost = 0, missiles = MISSILE.max, aimTarget = null;
+let lastBanner = '', bannerT = 0, hits = [];
+
+function myPlayer(){ return S && S.pl ? S.pl.find(p => p.c === me.c) : null; }
+
+function state(){
+  const p = myPlayer();
+  const was = phase;
+  phase = S.ph;
+  if(p){
+    // the host's heat is the truth; this phone guesses between snapshots
+    hot = !!p.l;
+    heat = heat * 0.5 + p.h * 0.5;
+    missiles = p.m;
+    $('score').textContent = p.s.toLocaleString();
+  }
+  $('hullBar').style.width = Math.max(0, S.hull) + '%';
+  $('hullBar').classList.toggle('low', S.hull < 35);
+  $('wave').textContent = phase === 'lobby' ? 'LOBBY' : S.w ? 'WAVE ' + S.w : 'GET READY';
+  $('mCount').textContent = missiles;
+  $('lobby').classList.toggle('on', phase === 'lobby' && !$('lockScr').classList.contains('on'));
+  $('over').classList.toggle('on', phase === 'over');
+  if(phase === 'over' && was !== 'over') results();
+  if(phase === 'over') $('againBtn').disabled = S.pt < 2.5;
+  if(phase === 'count') banner(String(Math.ceil(S.pt)), 'Find them. Shoot them.');
+  else if(phase === 'break') banner('WAVE ' + S.w + ' CLEARED', 'Next wave in ' + Math.ceil(S.pt) + ' - point at FRONT and tap ⌖ to re-lock');
+}
+
+function banner(t, sub){
+  const html = t + (sub ? '<small></small>' : '');
+  if(lastBanner !== t + sub){ $('banner').innerHTML = html; if(sub) $('banner').querySelector('small').textContent = sub; lastBanner = t + sub; }
+  $('banner').classList.add('on');
+  bannerT = performance.now() + 1200;
+}
+
+let toastT = 0;
+function toast(t){ $('toast').textContent = t; $('toast').classList.add('on'); toastT = performance.now() + 1800; }
+function note(t){ $('note').innerHTML = t ? '<span></span>' : ''; if(t) $('note').firstChild.textContent = t; }
+function buzz(p){ try { if(navigator.vibrate) navigator.vibrate(p); } catch(e){} }
+
+let calloutT = 0;
+function callout(t){ $('callout').textContent = t; calloutT = performance.now() + 2600; }
+
+world.onBolt = p => SND.sfx('enemyShot', p, 0.8);
+world.onEvent = ev => {
+  const k = ev[0];
+  if(k === 'zap' && ev[1] !== me.c) SND.sfx('laserFar', new THREE.Vector3(ev[2], ev[3], ev[4]).multiplyScalar(20), 0.6);
+  else if(k === 'hit' && ev[2] === me.c) SND.sfx('hit', world.posOf(ev[1]) || null, 0.6);
+  else if(k === 'boom'){
+    const p = new THREE.Vector3(ev[3], ev[4], ev[5]);
+    SND.sfx(ev[2] === 'boss' ? 'bigBoom' : 'boom', p);
+    if(ev[6] - 1 === me.c && ev[2] !== 'crate') buzz(25);
+    if(ev[2] === 'boss') banner('DREADNOUGHT DESTROYED', '');
+  } else if(k === 'mhit') SND.sfx('boom', new THREE.Vector3(ev[2], ev[3], ev[4]), 0.6);
+  else if(k === 'hull'){
+    const d = new THREE.Vector3(ev[2], ev[3], ev[4]);
+    SND.sfx('hull', d.clone().multiplyScalar(8));
+    hits.push({d, t: performance.now()});
+    $('vignette').style.opacity = Math.min(1, 0.3 + ev[1] / 10);
+    setTimeout(() => $('vignette').style.opacity = 0, 160);
+    buzz(ev[1] > 8 ? [80, 40, 80] : 50);
+  } else if(k === 'torp'){
+    const p = world.posOf(ev[1]);
+    if(p){ SND.sfx('torpedo', p); callout('TORPEDO - ' + dirWords(p.x, p.y, p.z)); }
+  } else if(k === 'boss'){
+    SND.cue('bosswarn');
+    banner('DREADNOUGHT', 'Shoot its four turrets to drop the shield');
+  } else if(k === 'shield'){ SND.sfx('shieldDown', world.posOf(ev[1])); banner('SHIELD DOWN', 'Hit the core!'); }
+  else if(k === 'wave'){ SND.cue('wave') || SND.sfx('click'); banner('WAVE ' + ev[1], ev[2] ? 'Dreadnought inbound' : ''); }
+  else if(k === 'clear'){ SND.cue('clear'); }
+  else if(k === 'over'){ releaseAll(); SND.cue(S && S.nr ? 'record' : 'gameover'); buzz([200, 100, 300]); }
+  else if(k === 'pick'){
+    SND.cue('pickup') || SND.sfx('pickup');
+    toast({repair: 'Hull repaired', rapid: 'RAPID FIRE - no heat for 10 s', missiles: 'Missiles refilled'}[ev[1]] || 'Supplies');
+  } else if(k === 'crate'){
+    const p = world.posOf(ev[1]);
+    if(p) callout('SUPPLY DRONE - ' + dirWords(p.x, p.y, p.z) + ' - shoot it');
+  } else if(k === 'hot' && ev[1] === me.c){ SND.sfx('hot'); buzz([30, 30, 30]); }
+  else if(k === 'msl' && ev[2] === me.c) SND.sfx('missile');
+};
+
+/* firing, as the phone predicts it: the beam leaves the moment the
+   trigger does; the host decides what it hit */
+function gun(dt){
+  cd = Math.max(0, cd - dt);
+  const rapid = S && S.rapid > 0;
+  if(hot || !firing || rapid) heat = Math.max(0, heat - LASER.coolRate * dt);
+  if(!firing || hot || cd > 0 || !(phase === 'wave' || phase === 'break')) return;
+  cd = rapid ? LASER.rapidCool : LASER.cool;
+  if(!rapid){ heat += LASER.heat; if(heat >= LASER.lockout){ heat = LASER.lockout; hot = true; } }
+  side = -side;
+  world.localZap(fwd, aimTarget ? aimTarget.id : 0, side);
+  SND.sfx('laser');
+}
+
+function fireMissile(){
+  if(!lockId || missiles < 1) return;
+  tx({t: 'msl', tg: lockId});
+  missiles--;
+  lockId = 0; lockT = 0;
+}
+$('missileBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); fireMissile(); });
+
+/* the missile's lock: hold the crosshair on one thing for a moment */
+function lockStep(dt){
+  const id = aimTarget ? aimTarget.id : 0;
+  if(lockId){
+    if(!world.ents.has(lockId)){ lockId = 0; lockT = 0; }
+    else if(id !== lockId){ lockLost += dt; if(lockLost > 0.6){ lockId = 0; lockT = 0; } }
+    else lockLost = 0;
+  } else if(id && missiles > 0 && (phase === 'wave' || phase === 'break')){
+    if(lockT > 0 && lockCand === id) lockT += dt; else { lockCand = id; lockT = dt; }
+    if(lockT > 0.6){ lockId = id; lockLost = 0; SND.sfx('lock'); buzz(15); }
+  } else { lockT = 0; lockCand = 0; }
+  $('missileBtn').classList.toggle('ready', !!lockId && missiles > 0);
+}
+let lockCand = 0;
+
+let sendT = 0;
+function sendIn(){
+  sendT = 0;
+  tx({t: 'in', a: [+fwd.x.toFixed(3), +fwd.y.toFixed(3), +fwd.z.toFixed(3)], tg: aimTarget ? aimTarget.id : 0, f: firing});
+}
+
+/* ---------- the overlay: crosshair, brackets, arrows ---------- */
+const TYPE_COL = {dart: '#ff5a4a', raider: '#ff9a3a', bomber: '#c070ff', phantom: '#40fff0', torpedo: '#ff3a9a', crate: '#5cff8a', turret: '#ff4a3a', boss: '#ff3a3a'};
+function drawHud(now){
+  const W = innerWidth, H = innerHeight, g = hg;
+  g.clearRect(0, 0, W, H);
+  if(!S || phase === 'lobby') { crosshair(g, W, H, now); return; }
+  const cx = W / 2, cy = H / 2;
+  // brackets round everything on screen, arrows at the edge for the rest
+  const offs = [];
+  for(const e of world.threats()){
+    if(e.type === 'phantom' && e.vis < 0.3) continue;
+    const pr = world.project(e.d);
+    const col = TYPE_COL[e.type] || '#fff';
+    const dist = e.d.length();
+    if(pr.on){
+      const s = Math.max(10, Math.min(60, (TYPES[e.type].r * 2.2 / dist) * H * 1.2));
+      g.strokeStyle = col; g.globalAlpha = e === aimTarget ? 1 : 0.65; g.lineWidth = e === aimTarget ? 2.5 : 1.5;
+      bracket(g, pr.x, pr.y, s);
+      if(e.type === 'boss' || e.type === 'bomber' || e.type === 'turret'){
+        g.fillStyle = '#0008'; g.fillRect(pr.x - s, pr.y + s + 4, s * 2, 4);
+        g.fillStyle = col; g.fillRect(pr.x - s, pr.y + s + 4, s * 2 * e.hp, 4);
+      }
+      if(e.type === 'torpedo'){ g.font = '700 11px system-ui'; g.fillStyle = col; g.textAlign = 'center'; g.fillText('TORPEDO', pr.x, pr.y - s - 6); }
+      if(e.type === 'crate'){ g.font = '700 11px system-ui'; g.fillStyle = col; g.textAlign = 'center'; g.fillText(['REPAIR', 'RAPID FIRE', 'MISSILES'][e.x] || 'SUPPLY', pr.x, pr.y - s - 6); }
+      g.globalAlpha = 1;
+    } else if(e.type !== 'turret'){
+      offs.push({e, dist, col});
+    }
+  }
+  offs.sort((a, b) => (a.e.type === 'torpedo' ? 0 : a.dist) - (b.e.type === 'torpedo' ? 0 : b.dist));
+  offs.slice(0, 10).forEach(o => arrow(g, o, W, H, now));
+  // the missile lock
+  if(lockId || lockT > 0){
+    const e = world.ents.get(lockId || lockCand);
+    if(e){
+      const pr = world.project(e.d);
+      if(pr.on){
+        const k = lockId ? 1 : lockT / 0.6;
+        const r = 46 - 20 * k;
+        g.save(); g.translate(pr.x, pr.y); g.rotate(now / 300);
+        g.strokeStyle = lockId ? '#ff2d6a' : '#ffffffaa'; g.lineWidth = 2.5;
+        for(let i = 0; i < 4; i++){ g.rotate(Math.PI / 2); g.beginPath(); g.moveTo(r, -6); g.lineTo(r + 8, 0); g.lineTo(r, 6); g.stroke(); }
+        g.restore();
+        if(lockId){ g.font = '800 12px system-ui'; g.fillStyle = '#ff2d6a'; g.textAlign = 'center'; g.fillText('LOCKED', pr.x, pr.y + 44); }
+      }
+    }
+  }
+  // hits on the hull, from the side they came
+  hits = hits.filter(h => now - h.t < 900);
+  for(const h of hits){
+    const sd = world.screenDir(h.d.clone().multiplyScalar(50));
+    const a = Math.atan2(sd.y, sd.x);
+    g.save(); g.translate(cx, cy);
+    g.strokeStyle = `rgba(255,40,70,${1 - (now - h.t) / 900})`; g.lineWidth = 10;
+    g.beginPath(); g.arc(0, 0, Math.min(W, H) * 0.42, a - 0.35, a + 0.35); g.stroke();
+    g.restore();
+  }
+  crosshair(g, W, H, now);
+}
+
+function bracket(g, x, y, s){
+  const k = s * 0.4;
+  g.beginPath();
+  g.moveTo(x - s, y - s + k); g.lineTo(x - s, y - s); g.lineTo(x - s + k, y - s);
+  g.moveTo(x + s - k, y - s); g.lineTo(x + s, y - s); g.lineTo(x + s, y - s + k);
+  g.moveTo(x + s, y + s - k); g.lineTo(x + s, y + s); g.lineTo(x + s - k, y + s);
+  g.moveTo(x - s + k, y + s); g.lineTo(x - s, y + s); g.lineTo(x - s, y + s - k);
+  g.stroke();
+}
+
+function arrow(g, o, W, H, now){
+  const sd = world.screenDir(o.e.d);
+  let a = Math.atan2(sd.y, sd.x);
+  const torp = o.e.type === 'torpedo';
+  const rx = W / 2 - 34, ry = H / 2 - 50;
+  const x = W / 2 + Math.cos(a) * rx, y = H / 2 + 20 + Math.sin(a) * ry;
+  const near = Math.max(0.5, Math.min(1.4, 70 / o.dist));
+  const s = (torp ? 16 + 4 * Math.sin(now / 80) : 11) * near;
+  g.save(); g.translate(x, y); g.rotate(a);
+  g.fillStyle = o.col; g.globalAlpha = torp ? 1 : 0.85;
+  g.shadowColor = o.col; g.shadowBlur = 10;
+  g.beginPath(); g.moveTo(s, 0); g.lineTo(-s * 0.7, -s * 0.75); g.lineTo(-s * 0.35, 0); g.lineTo(-s * 0.7, s * 0.75); g.closePath(); g.fill();
+  g.restore();
+  g.globalAlpha = 1;
+}
+
+function crosshair(g, W, H, now){
+  const cx = W / 2, cy = H / 2;
+  const on = !!aimTarget;
+  g.strokeStyle = hot ? '#ff3355' : on ? '#ff6a3d' : '#e8f6ff';
+  g.lineWidth = 2;
+  g.globalAlpha = 0.9;
+  g.beginPath(); g.arc(cx, cy, on ? 14 : 18, 0, Math.PI * 2); g.stroke();
+  for(const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]){
+    g.beginPath(); g.moveTo(cx + dx * 24, cy + dy * 24); g.lineTo(cx + dx * 34, cy + dy * 34); g.stroke();
+  }
+  g.fillStyle = g.strokeStyle; g.beginPath(); g.arc(cx, cy, 2, 0, Math.PI * 2); g.fill();
+  // heat round the outside
+  if(phase !== 'lobby'){
+    const k = Math.min(1, heat / LASER.lockout);
+    g.lineWidth = 4;
+    g.strokeStyle = '#ffffff22'; g.beginPath(); g.arc(cx, cy, 44, Math.PI * 0.75, Math.PI * 2.25); g.stroke();
+    g.strokeStyle = hot ? (Math.floor(now / 120) % 2 ? '#ff3355' : '#ffffff') : k > 0.7 ? '#ff7a3d' : '#4dd0ff';
+    g.beginPath(); g.arc(cx, cy, 44, Math.PI * 0.75, Math.PI * (0.75 + 1.5 * k)); g.stroke();
+    if(hot){ g.font = '800 13px system-ui'; g.fillStyle = '#ff3355'; g.textAlign = 'center'; g.fillText('OVERHEAT', cx, cy + 64); }
+    if(S && S.rapid > 0){ g.font = '800 13px system-ui'; g.fillStyle = '#ffd23a'; g.textAlign = 'center'; g.fillText('RAPID FIRE ' + Math.ceil(S.rapid), cx, cy - 56); }
+  }
+  g.globalAlpha = 1;
+}
+
+/* ---------- lobby and results ---------- */
+let qrFor = '';
+function drawRoom(){
+  if(!room) return;
+  const c = $('crew');
+  c.innerHTML = '';
+  room.people.filter(p => p.role === 'player').forEach(p => {
+    const s = document.createElement('span');
+    s.className = 'chip' + (p.r ? ' ready' : '') + (p.w ? ' away' : '');
+    s.style.borderColor = s.style.color = COLORS[p.c] || '#fff';
+    s.textContent = p.n;
+    c.appendChild(s);
+  });
+  const mine = room.people.find(p => p.id === me.id || p.id === devId);
+  ready = !!(mine && mine.r);
+  $('readyBtn').textContent = ready ? 'READY ✓ (tap to wait)' : 'READY';
+  $('record').textContent = room.best ? 'Best on this ' + (room.tv ? 'TV' : 'phone') + ': wave ' + room.best + ' · ' + room.bestScore.toLocaleString() + ' points' : '';
+  // a hosting phone shows the way in
+  if(host && room.code){
+    $('qrBox').style.display = 'block';
+    $('hostRow').style.display = '';
+    $('qrCode').textContent = room.code;
+    const url = location.href.split('#')[0].split('?')[0] + (isLocal ? '?local=1' : '') + '#' + room.code;
+    if(qrFor !== url){ qrFor = url; drawQr($('qr'), url); }
+  } else if(host) $('lobbySub').textContent = room.status || '';
+  const th = $('themes');
+  const list = SND.musicThemes();
+  if(list.length && th.childElementCount !== list.length + 1){
+    th.innerHTML = '';
+    list.concat([{key: 'off', title: 'Off'}]).forEach(t => {
+      const b = document.createElement('button');
+      b.textContent = t.title; b.dataset.key = t.key;
+      b.addEventListener('click', () => { SND.unlock(); tx({t: 'theme', key: t.key}); SND.sfx('click'); });
+      th.appendChild(b);
+    });
+  }
+  [...th.children].forEach(b => b.classList.toggle('sel', b.dataset.key === room.theme));
+}
+let ready = false;
+$('readyBtn').addEventListener('click', () => { SND.unlock(); ready = !ready; tx({t: 'ready', v: ready}); SND.sfx('click'); });
+$('startNow').addEventListener('click', () => { SND.unlock(); tx({t: 'go'}); });
+$('againBtn').addEventListener('click', () => { tx({t: 'again'}); });
+
+function drawQr(cv, text){
+  const m = qrMatrix(text, 'M'), n = m.length, g = cv.getContext('2d');
+  const s = Math.floor(cv.width / (n + 2));
+  g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#000';
+  const o = Math.floor((cv.width - s * n) / 2);
+  for(let y = 0; y < n; y++) for(let x = 0; x < n; x++) if(m[y][x]) g.fillRect(o + x * s, o + y * s, s, s);
+}
+
+function results(){
+  const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
+  const aw = awardsOf(pl);
+  $('overTitle').textContent = 'The station has fallen';
+  $('overSub').innerHTML = '';
+  const sub = document.createElement('span');
+  sub.textContent = 'You held out to wave ' + S.w + '. ';
+  $('overSub').appendChild(sub);
+  if(S.nr){ const r = document.createElement('span'); r.className = 'record'; r.textContent = 'NEW RECORD!'; $('overSub').appendChild(r); }
+  const t = $('results');
+  t.innerHTML = '<tr><td></td><td class="r">score</td><td class="r">kills</td><td class="r">aim</td></tr>';
+  pl.forEach(p => {
+    const tr = document.createElement('tr');
+    const n = document.createElement('td'); n.className = 'n'; n.style.color = COLORS[p.c]; n.textContent = p.n;
+    if(aw[p.id]){ const a = document.createElement('span'); a.className = 'award'; a.textContent = aw[p.id]; n.appendChild(a); }
+    tr.appendChild(n);
+    for(const v of [p.s.toLocaleString(), p.k, p.sh ? Math.round(100 * p.hi / p.sh) + '%' : '-']){
+      const td = document.createElement('td'); td.className = 'r'; td.textContent = v; tr.appendChild(td);
+    }
+    t.appendChild(tr);
+  });
+}
+import {awards as awardsOf} from './sim.js';
+
+/* ---------- the loop ---------- */
+let lastT = performance.now();
+function frame(){
+  requestAnimationFrame(frame);
+  const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
+  lastT = now;
+  if(testTrack){
+    const e = world.ents.get(testTrack);
+    if(e) NW_TEST.aim(e.d.x, e.d.y, e.d.z); else testTrack = 0;
+  }
+  updateView();
+  aimTarget = phase === 'lobby' ? null : world.pick(fwd);
+  if(S){ gun(dt); lockStep(dt); }
+  sendT += dt;
+  if(joined && sendT >= 0.05) sendIn();
+  world.render();
+  drawHud(now);
+  if(now > bannerT) $('banner').classList.remove('on');
+  if(now > toastT) $('toast').classList.remove('on');
+  if(now > calloutT) $('callout').textContent = '';
+  // the music: the lobby's, the chosen theme's, or the dreadnought's
+  const theme = room && room.theme;
+  const want = !S ? null : phase === 'lobby' ? (theme && theme !== 'off' && room.themePicked ? theme : 'lobby') : phase === 'over' ? null :
+    (S.boss ? 'boss' : theme === 'off' ? null : theme || 'nightwatch');
+  SND.music(want);
+}
+requestAnimationFrame(frame);
+
+/* For netcheck: drive this phone without a phone. */
+let testTrack = 0;
+window.NW_TEST = {
+  track(id){ testTrack = id; },
+  aim(x, y, z){ if(!dragMode) useDrag(); const l = Math.hypot(x, y, z); dragYaw = Math.atan2(-x, -z); dragPitch = Math.asin(y / l); },
+  fire(on){ trigger('test', !!on); },
+  missile: fireMissile,
+  host: () => host,
+  world: () => world,
+  state: () => ({phase, me: me.c, hull: S && S.hull, wave: S && S.w, target: aimTarget ? aimTarget.id : 0, lockId,
+    ents: [...world.ents.values()].map(e => ({id: e.id, type: e.type, p: [e.d.x, e.d.y, e.d.z], vis: e.vis})),
+    score: myPlayer() ? myPlayer().s : 0, room}),
+};
+</script>
+</body>
+</html>
