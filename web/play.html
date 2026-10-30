@@ -312,7 +312,7 @@ let me = {c: -1}, S = null, room = null, roomTv = true;
 $('nameIn').value = myName;
 const hashCode = (location.hash || '').replace('#', '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
 $('codeIn').value = hashCode;
-$('tvLink').href = './' + (isLocal ? '?local=1' : '');
+$('tvLink').href = './?tv=1' + (isLocal ? '&local=1' : '');
 
 function readName(){
   myName = $('nameIn').value.trim().slice(0, 14) || 'Gunner';

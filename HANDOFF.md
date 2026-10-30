@@ -32,6 +32,14 @@ Fire-Stick-bound), a full working game. Working title.
 | `worker.js`, `wrangler.jsonc` | Serves `web/` and `/relay` (Cloudflare TURN), exactly as Mission Control. |
 | `simcheck.mjs`, `netcheck.mjs` | The checks. `tools/art.mjs` draws the icons and link preview. |
 
+## Playing alone
+
+A phone that opens the main URL is sent straight to `play.html` (a
+coarse pointer and a screen under 600 px; `?tv=1` keeps a phone or tablet
+as the TV). There, START A GAME ON THIS PHONE hosts on the phone itself
+and READY (or START NOW) begins a solo game. The TV lobby says so, and
+links a laptop to the same page.
+
 ## Playing it without phones
 
 - `play.html?local=1`, START A GAME ON THIS PHONE: on a laptop there are no

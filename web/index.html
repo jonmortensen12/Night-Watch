@@ -9,6 +9,16 @@
 <meta property="og:description" content="Your phone is a window into space. Find the enemy ships hiding all around you - and shoot them, together.">
 <meta property="og:image" content="og.png">
 <link rel="manifest" href="manifest.webmanifest">
+<script>
+/* This page is the TV. A phone that lands here wants to play, not host:
+   send it to the phone page (?tv=1 keeps a phone or tablet as the TV). */
+(function(){
+  var q = new URLSearchParams(location.search);
+  if(q.has('tv') || q.has('watch')) return;
+  var phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+  if(phone) location.replace('play.html' + location.search + location.hash);
+})();
+</script>
 <link rel="icon" href="icon-192.png">
 <style>
 :root { --ink:#e8f1ff; --dim:#8aa0bf; --acc:#4dd0ff; --warn:#ff4d6a; --gold:#ffc94d; }
@@ -104,6 +114,7 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
   </ol>
   <div class="crew" id="crew"></div>
   <div class="hint" id="hint">Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).</div>
+  <div class="hint" style="margin-top:0">Just you? Open this page on your phone and tap <b>START A GAME ON THIS PHONE</b> - or <a id="soloLink" href="play.html" style="color:var(--acc)">play on this computer</a> (drag to look, Space to fire).</div>
 </div>
 
 <div id="board" class="panel off"></div>
@@ -139,6 +150,7 @@ import * as SND from './sound.js';
 const $ = id => document.getElementById(id);
 const isLocal = NWNet.isLocal();
 const params = new URLSearchParams(location.search);
+$('soloLink').href = 'play.html' + (isLocal ? '?local=1' : '');
 const low = params.get('q') === 'low';
 const world = new World($('view'), {mode: 'tv', low});
 const hud = $('hud'), hg = hud.getContext('2d');
