@@ -21,8 +21,11 @@ Fire-Stick-bound), a full working game. Working title.
 |---|---|
 | `web/index.html` | The TV. Hosts the room (or, with `?watch=CODE`, watches a phone's game), draws the battle, plays the music. |
 | `web/play.html` | The phone. Joins a room, or hosts one itself ("START A GAME ON THIS PHONE"). |
-| `web/sim.js` | The simulation. Pure, deterministic, no drawing. Used by the host and by `simcheck`. |
-| `web/host.js` | Runs a room: the people, the 60 Hz clock, snapshots to every screen. The TV and a hosting phone both use it. |
+| `web/sim.js` | The space simulation. Pure, deterministic, no drawing. Used by the host and by `simcheck`. |
+| `web/zsim.js` | The bunker (zombie mode) simulation, the same shape as `sim.js`. |
+| `web/yard.js` | The bunker's renderer: the graveyard, the fence, the monsters, the guns. |
+| `web/zombie-phone.js`, `web/zombie-tv.js` | The bunker's controls and overlay on a phone, and its view on the TV. `play.html` and `index.html` hand over to them in zombie mode. |
+| `web/host.js` | Runs a room: the people, the 60 Hz clock, snapshots to every screen, which game (space or bunker). The TV and a hosting phone both use it. |
 | `web/world.js` | The three.js renderer for both kinds of screen: sky, ships, effects, interpolation, the phone's aim pick. |
 | `web/sound.js` | Synthesised effects (3D on phones) and the music player. |
 | `web/net.js` | PeerJS (WebRTC) normally, BroadcastChannel with `?local=1`. Ported from Mission Control. |
@@ -49,6 +52,16 @@ links a laptop to the same page.
   same browser: a TV and phones with no internet. This is what `netcheck`
   drives.
 - `?q=low` on either page: no bloom, fewer particles, smaller sky.
+
+## Two games, one room
+
+The lobby picks **Space** or **Bunker** from any phone (`mode` message;
+only between games — the results screen has a LOBBY button to get back).
+The host swaps `sim.js` for `zsim.js`, everybody keeps their colour, and
+each game keeps its own music choice and record (`nwatch_save`: `mode`,
+`themes`, `bests`). Every snapshot says which game it is (`s.mode`), and
+the pages switch renderer when it changes: in bunker mode the space canvas
+is hidden and `zombie-phone.js` / `zombie-tv.js` draw on their own.
 
 ## The shared sky (the idea everything rests on)
 
@@ -222,6 +235,104 @@ real games will end sooner than this:
 
 These are a starting point to retune after the first family game.
 
+## The bunker (zombie mode)
+
+Asked for on 2026-10-30: "using your living room like a bunker with
+zombies coming from all sides (no up or down) ... controls for walking
+around (forward, back, strafing) ... the bunker can be fairly small ... no
+blood and gore ... several Halloween themed monsters ... if they get in, we
+lose ... health indicators on the different sections they attack ...
+switch between weapons that all have their strengths and weaknesses. A
+sniper rifle that can zoom in, a shotgun and a pistol." No ammunition
+(asked). AR was discussed and deliberately left out for now: a phone can
+only know where it is in a room through the camera (ARCore/ARKit), and
+iPhone browsers — Chrome included, which is Safari underneath — have no
+web AR.
+
+**The place.** A 9 m square wooden bunker in a graveyard at night (moon,
+fog, gravestones, dead trees, jack-o'-lanterns, mist, wisps). Its fence is
+**eight sections**, two to a side, named for the room: front left, front
+right, right front, right back, back right, back left, left back, left
+front (`SECTIONS` in `zsim.js`). Each has 100 health, shown as a bar over
+it, as planks falling off (one per 25), a red glow when it is down, its
+colour on the phone's minimap and its name on the TV.
+
+**Moving.** The phone still looks by turning (same LOCK FRONT, same shared
+frame — the TV is front). A floating stick under the left thumb walks you,
+relative to where the phone points: up is forward, sideways strafes
+(3.2 m/s; a third of that zoomed in). The phone is trusted with its own
+position (no lag on your own feet) and the host clamps it inside. Laptops:
+WASD, drag to look, Space fires, 1/2/3 guns, Z zoom, R repair.
+
+**Monsters** (`MONSTERS`), all walking across the field from every
+direction to the section nearest where they came from:
+- **Pumpkinhead** — a scarecrow with a carved, glowing pumpkin head. The basic one.
+- **Skeleton** — fast and fragile, jaw chattering.
+- **Bat** (wave 2+) — come five at a time, flitting, nibbling the fence. The shotgun's job.
+- **Ghost** (wave 3+) — floats straight *through* the fence, slowly. Must be shot before it is inside.
+- **Brute** (wave 4+) — a big green stitched-together monster; slow, 18 health, hits the fence hardest, cannot be knocked back.
+- **The Witch** (every 5th wave) — circles on her broom, drops **pumpkin bombs** on the weakest section near her (shootable on the way down; 25 to that section and 8 to each neighbour) and raises skeletons.
+
+At its section a monster batters it; once it is broken (0) monsters
+**climb through** (2.2 s, longer for the brute) and **the first one inside
+ends the game** ("A skeleton got in through the front left wall on wave
+6"). Repairing a broken section under a climber pushes it back out.
+Shooting one off the wall mid-climb is a "save".
+
+**Guns** (`WEAPONS`) — no ammo; each is held back by rate, spread and reach:
+- **Pistol**: 3.5 shots/s, 1 damage, accurate, 60 m. The all-rounder.
+- **Shotgun**: 8 pellets in a 7° cone every 0.85 s, damage falls off to
+  nothing by 20 m, knocks things back. Murderous close, useless far.
+- **Sniper**: one shot every 1.25 s, 7 damage, goes through three in a
+  line, 140 m, a little spread unless **zoomed** (14° field of view, a
+  scope overlay, slow walking).
+Shots are resolved like space (the phone's pick, trusted within ~10°, else
+the host's own rays from the player's eye). The phone draws its tracers
+and muzzle flash the moment it fires.
+
+**Repair.** Within 1.7 m of a damaged section a big HOLD TO REPAIR button
+appears: 24 health a second, no shooting while hammering. A cleared wave
+gives every section 20. Results credit it ("Carpenter").
+
+**On the phone**: three gun buttons at the top, ZOOM for the sniper, the
+minimap (FRONT up, sections coloured by health, everybody, monsters) top
+right, arrows at the screen edge for anything at the fence or a ghost
+close in (red and pulsing when it is climbing in), hit markers, a
+reload ring for the slow guns. A **torch** on every phone lights what you
+point at — the fence and monsters are dark otherwise. Callouts for weak
+and broken walls, climbers, bombs, the witch.
+
+**On the TV**: the bunker from behind and above (left is left in the
+room), section names over their bars, rings round anything climbing in,
+each player as a figure in their colour, the scoreboard showing each
+player's gun or the wall they are fixing.
+
+**Sound**: three guns, groans, rattling bones, ghostly "wooo", bat
+squeaks, the witch's cackle, thuds on the fence, cracking planks, a bomb's
+whistle, hammering — placed around the listener, who walks with the
+player. Music (same pipeline, new instruments fetched by `samples.py`:
+church organ, xylophone, harpsichord, bassoon, oboe, tubular bells, music
+box): **Danse of the Dead** (D minor waltz, 168 bpm — xylophone,
+harpsichord, pizzicato, bassoon, organ), **Hollow Hill** (E minor, 92 bpm —
+music box, taiko heartbeat, bells, oboe, choir), lobby **zlobby** (music
+box), the witch's **witchboss** (G minor, 3/4 at 180), cues **zwave**
+(a bell tolls), **zclear**, **witchwarn**, **zover**.
+
+**Tuning** (`simcheck`, computer defenders who see all round at once —
+people have to turn round, so real games will be shorter): one average
+defender ~wave 6–10, two ~11–13, four ~13–14; waves 40–60 s; walls get
+broken a few times a game; brutes and bats end most games. Four people
+get proportionally more monsters (`crowd = 0.55 + 0.45 × players`).
+
+**Protocol additions**: phone → host `in {a, tg, f, w, x, z, r, zm}` (aim,
+pick, trigger, gun, position, repair, zoom), `mode {key}`, `lobby`. Host →
+phone `s` in bunker mode carries `sec` (eight healths, −1 broken), `hit`
+(which sections are being hit), `m` (11 numbers a monster: id, type, x, y,
+z, facing, health %, state, section, vx, vz), `pl` (with x, z, gun, repair,
+zoom), `why` (what got in, where) and events `shot`, `hit`, `poof`, `weak`,
+`broken`, `fixed`, `climb`, `bomb`, `blast`, `witch`, `summon`,
+`witchdown`, plus the shared `wave`, `clear`, `count`, `over`.
+
 ## Not built yet / to check
 
 - **Never run on a real phone.** Everything is verified headless (software
@@ -236,5 +347,11 @@ These are a starting point to retune after the first family game.
 - **No licence gate.** Port Family Beatdown's when there is a product.
 - **No haptics on iPhone** (Safari has no `navigator.vibrate`); hits flash
   red instead.
+- **The bunker has never been played by people.** Check: whether the
+  stick plus turning feels right, how dark it is on a real phone (the
+  torch, `toneMappingExposure`), whether eight sections is the right
+  number to watch, and the monster counts per wave.
+- **Bunker AR** (zombies through your real windows) needs the camera and
+  is Android-only on the web; deliberately not started.
 - Ideas not built: a "spotter" role for a phone that just points and tags
   enemies for others, a radar sphere, versus mode.

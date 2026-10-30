@@ -186,6 +186,78 @@ ok(await until(watcher, () => NW_TV.state().phase === 'count' || NW_TV.state().p
 ok(await until(guest, () => NW_TEST.state().phase === 'wave', null, 8000), 'and the guest plays it');
 ok(await until(watcher, () => NW_TV.state().ents > 0, null, 10000), 'the watching TV shows the enemies');
 
+console.log('the bunker');
+for(const p of [hp, guest, watcher]) await p.close();
+const ztv = await ctx.newPage();
+await ztv.setViewportSize({width: 1280, height: 720});
+watchErrors(ztv, 'bunker TV');
+await ztv.goto(BASE + 'index.html?local=1');
+await until(ztv, () => NW_TV.state().room && NW_TV.state().room.code);
+const code3 = await ztv.evaluate(() => NW_TV.state().room.code);
+const zp = [await phone(code3, 'Fay'), await phone(code3, 'Gus')];
+ok(await until(ztv, () => NW_TV.state().room.people.length === 2), 'two phones join a new room');
+await until(zp[0], () => document.querySelectorAll('#modes button').length === 2, null, 5000);
+await zp[0].click('#modes button[data-mode=zombie]');
+ok(await until(ztv, () => NW_TV.state().mode === 'zombie'), 'a phone switches the game to the bunker');
+ok(await until(zp[1], () => NW_TEST.mode() === 'zombie'), 'and every phone follows');
+ok(await until(zp[1], () => [...document.querySelectorAll('#themes button')].some(b => b.dataset.key === 'danse')), 'with the bunker\'s own music to choose from');
+for(const p of zp) await p.click('#readyBtn');
+ok(await until(ztv, () => NW_TV.state().phase === 'wave', null, 12000), 'wave 1 in the bunker');
+// walking
+const p0 = await zp[0].evaluate(() => NW_TEST.z().state());
+await zp[0].keyboard.down('KeyW'); await wait(2500); await zp[0].keyboard.up('KeyW');   // long: software WebGL draws few frames
+const p1 = await zp[0].evaluate(() => NW_TEST.z().state());
+ok(Math.hypot(p1.x - p0.x, p1.z - p0.z) > 0.5, 'W walks (' + Math.hypot(p1.x - p0.x, p1.z - p0.z).toFixed(1) + ' m)');
+ok(await until(ztv, (n) => { const p = NW_TV.state().players.find(q => q.n === 'Fay'); return p && Math.hypot(p.x - n[0], p.z - n[1]) < 0.3; }, [p1.x, p1.z], 3000), 'and the TV sees where she went');
+// the guns
+await zp[1].keyboard.press('Digit2');
+ok(await until(ztv, () => NW_TV.state().players.find(q => q.n === 'Gus').w === 1), 'switching to the shotgun reaches the host');
+await zp[1].keyboard.press('Digit3');
+await zp[1].evaluate(() => NW_TEST.z().zoom(true));
+ok(await zp[1].evaluate(() => NW_TEST.z().state().zoom), 'the sniper zooms');
+await zp[1].evaluate(() => NW_TEST.z().zoom(false));
+await zp[1].keyboard.press('Digit1');
+let zk = 0;
+const z0 = Date.now();
+while(Date.now() - z0 < 40000 && zk < 4){
+  for(const p of zp) await p.evaluate(() => {
+    const s = NW_TEST.z().state();
+    const live = s.mons.filter(m => m.type !== 'bomb').sort((a, b) => Math.hypot(a.p[0] - s.x, a.p[2] - s.z) - Math.hypot(b.p[0] - s.x, b.p[2] - s.z));
+    if(!live.length){ NW_TEST.z().fire(false); return; }
+    const c = live[0].c;
+    NW_TEST.aim(c[0] - s.x, c[1] - 1.55, c[2] - s.z);
+    NW_TEST.z().fire(true);
+  });
+  zk = (await ztv.evaluate(() => NW_TV.state().players)).reduce((a, p) => a + p.k, 0);
+  await wait(150);
+}
+for(const p of zp) await p.evaluate(() => NW_TEST.z().fire(false));
+ok(zk >= 2, 'phones shoot monsters down (' + zk + ' gone poof)');
+await ztv.screenshot({path: 'shots/tv-bunker.png'});
+await zp[0].screenshot({path: 'shots/phone-bunker.png'});
+// repairing
+await ztv.evaluate(() => { const S = NW_TV.host().S; S.secs[4].hp = 30; S.secs[4].warned = true; });
+await zp[0].evaluate(() => NW_TEST.z().moveTo(2.2, 3.6));
+ok(await until(zp[0], () => getComputedStyle(document.getElementById('zrep')).display !== 'none', null, 3000), 'standing at a damaged wall shows REPAIR');
+await zp[0].keyboard.down('KeyR');
+ok(await until(ztv, () => NW_TV.state().secs[4] > 60, null, 6000), 'holding it rebuilds the wall');
+await zp[0].keyboard.up('KeyR');
+// losing
+await ztv.evaluate(async () => {
+  const S = NW_TV.host().S; const ZB = await import('./zsim.js');
+  S.secs[0].hp = 0; S.secs[0].broken = true;
+  const m = ZB.newMonster(S, 'skeleton', -2.25, -4.95); m.sec = 0; m.st = 'climb'; m.climbT = 2;
+});
+ok(await until(ztv, () => NW_TV.state().phase === 'over', null, 6000), 'a monster climbing through a broken wall ends it');
+ok(await until(zp[0], () => document.getElementById('overTitle').textContent === 'They got in!'), 'the phones say so');
+ok(await zp[0].evaluate(() => /skeleton got in through the front left wall/.test(document.getElementById('overSub').textContent)), 'naming what got in, and where');
+ok(await ztv.evaluate(() => /THEY GOT IN/.test(document.getElementById('overTitle').textContent)), 'and so does the TV');
+await until(zp[0], () => !document.getElementById('lobbyBtn').disabled, null, 6000);
+await zp[0].click('#lobbyBtn');
+ok(await until(ztv, () => NW_TV.state().phase === 'lobby'), 'LOBBY takes everybody back to the lobby');
+await zp[0].click('#modes button[data-mode=space]');
+ok(await until(ztv, () => NW_TV.state().mode === 'space'), 'back to space between games');
+
 console.log('');
 ok(errors.length === 0, 'no errors on any page' + (errors.length ? ':\n    ' + [...new Set(errors)].slice(0, 12).join('\n    ') : ''));
 await browser.close();

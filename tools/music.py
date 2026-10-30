@@ -52,6 +52,14 @@ INST = {
     'piano':    dict(gm='acoustic_grand_piano', gain=0.42, pan=0.0, send=0.35, rel=0.6, sus=False, ring=2.2),
     'hit':      dict(gm='orchestra_hit', gain=0.5, pan=0.0, send=0.5, rel=0.5, sus=False, ring=1.5),
     'revcym':   dict(gm='reverse_cymbal', gain=0.35, pan=0.0, send=0.3, rel=0.0, sus=False, ring=0.0),
+    # the bunker's instruments
+    'organ':    dict(gm='church_organ', gain=0.26, pan=0.0, send=0.6, rel=0.7, sus=True),
+    'xylo':     dict(gm='xylophone', gain=0.42, pan=0.25, send=0.35, rel=0.3, sus=False, ring=0.6),
+    'harpsi':   dict(gm='harpsichord', gain=0.34, pan=-0.25, send=0.35, rel=0.4, sus=False, ring=1.0),
+    'bassoon':  dict(gm='bassoon', gain=0.5, pan=-0.15, send=0.35, rel=0.25, sus=True),
+    'oboe':     dict(gm='oboe', gain=0.4, pan=0.2, send=0.45, rel=0.25, sus=True),
+    'bells':    dict(gm='tubular_bells', gain=0.42, pan=0.0, send=0.6, rel=1.5, sus=False, ring=3.5),
+    'mbox':     dict(gm='music_box', gain=0.34, pan=0.15, send=0.55, rel=0.8, sus=False, ring=1.6),
 }
 
 _cache = {}
@@ -170,7 +178,7 @@ class Score:
             self.note(inst, beat, dur, p, vel)
 
     def drum(self, kind, beat, vel=0.8):
-        self.fx.append((kind, self.sec(beat) + self.rng.uniform(-0.003, 0.003), vel * self.rng.uniform(0.92, 1.05)))
+        self.fx.append((kind, max(0, self.sec(beat) + self.rng.uniform(-0.003, 0.003)), vel * self.rng.uniform(0.92, 1.05)))
 
 
 # ---------------------------------------------------------------- synthesised drums
@@ -548,6 +556,196 @@ def lobby():
     return sc
 
 
+# ---------------------------------------------------------------- the bunker
+def waltz(sc, bar, ch, inst_bass, inst_chord, lo, hi, vb, vc):
+    """Oom-pah-pah: the bass on one, the chord on two and three."""
+    bass, pcs, root = chord(ch)
+    sc.note(inst_bass, bar * 3, 1, near(bass, 38, 49), vb)
+    for b in (1, 2):
+        sc.hold(inst_chord, bar * 3 + b, 0.9, voice(pcs, lo, hi), vc)
+
+
+def danse():
+    """Danse of the Dead: a skeletons' waltz. Xylophone tune over
+    pizzicato and harpsichord, a bassoon in the middle, the organ and the
+    brass for the last time round. D minor, 3/4, 168 bpm."""
+    sc = Score(168, 52, beats=3, seed=61)
+    A = ['Dm', 'E', 'A7', 'A', 'Dm', 'Gm', 'Dm', 'A', 'Dm', 'Bb', 'Gm', 'Gm', 'Dm', 'A', 'Dm', 'Dm']
+    B = ['F', 'C', 'Dm', 'A', 'Bb', 'F', 'Gm', 'A', 'F', 'C', 'Dm', 'A', 'Bb', 'Gm', 'A', 'Dm']
+    prog = ['Dm', 'Dm', 'A', 'A'] + A + B + A
+    for bar, ch in enumerate(prog):
+        sect = 'intro' if bar < 4 else 'A' if bar < 20 else 'B' if bar < 36 else "A'"
+        bass, pcs, root = chord(ch)
+        waltz(sc, bar, ch, 'pizz', 'pizz', 55, 67, 0.62, 0.42)
+        if sect != 'intro':
+            for b in (1, 2):
+                sc.hold('harpsi', bar * 3 + b, 0.8, voice(pcs, 62, 74), 0.36)
+        sc.note('bass', bar * 3, 3, near(bass, 26, 37), 0.42)
+        if bar % 2 == 0:
+            sc.note('timp', bar * 3, 1, near(bass, 40, 52), 0.42 if sect != "A'" else 0.6)
+        if sect in ('B', "A'"):
+            sc.hold('organ', bar * 3, 3, voice(pcs, 50, 64), 0.3 if sect == 'B' else 0.36)
+        if sect == "A'":
+            sc.hold('brass', bar * 3, 0.8, voice(pcs, 55, 67), 0.5)
+            sc.drum('snare', bar * 3 + 1, 0.4)
+            sc.drum('snare', bar * 3 + 2, 0.4)
+    melA = ['D5:1 F5:1 A5:1', 'G#5:2 A5:1', 'E5:1 G5:1 A5:1', 'C#5:3',
+            'D5:1 F5:1 A5:1', 'Bb5:1 A5:1 G5:1', 'F5:1 E5:1 D5:1', 'E5:3',
+            'D5:1 F5:1 A5:1', 'D6:2 C6:1', 'Bb5:1 A5:1 G5:1', 'G5:2 Bb5:1',
+            'A5:1 F5:1 D5:1', 'E5:1 C#5:1 A4:1', 'D5:1 E5:1 F5:1', 'D5:3']
+    melB = ['A3:2 C4:1', 'G3:2 E3:1', 'F3:1 A3:1 D4:1', 'C#4:3', 'D4:2 F4:1', 'C4:2 A3:1', 'Bb3:1 D4:1 G4:1', 'E4:3',
+            'F4:2 A4:1', 'G4:2 E4:1', 'F4:1 E4:1 D4:1', 'E4:2 A3:1', 'D4:1 F4:1 Bb4:1', 'A4:1 G4:1 Bb4:1', 'A4:2 E4:1', 'D4:3']
+    for i, ln in enumerate(melA):
+        sc.line('xylo', (4 + i) * 3, ln, 0.82)
+        sc.line('xylo', (36 + i) * 3, ln, 0.86)
+        sc.line('trumpet', (36 + i) * 3, ln, 0.6, legato=0.8)
+        sc.line('strings', (36 + i) * 3, ln, 0.34, shift=-12)
+    for i, ln in enumerate(melB):
+        sc.line('bassoon', (20 + i) * 3, ln, 0.78)
+        sc.line('cello', (20 + i) * 3, ln, 0.4)
+        if i >= 8:
+            sc.line('oboe', (20 + i) * 3, ln, 0.5, shift=12)
+    for bar in (4, 20, 36):
+        sc.drum('crash', bar * 3, 0.6)
+        sc.note('bells', bar * 3, 2, 'D4', 0.5)
+    roll(sc, 'timp', 51 * 3, 3, 'A2', 0.3, 0.75)
+    return sc
+
+
+def hollow():
+    """Hollow Hill: a music box going round in the dark, a heartbeat on
+    the taiko, an organ and a choir, bells tolling, an oboe. E minor, 92 bpm."""
+    sc = Score(92, 24, seed=71)
+    prog = ['Em', 'C', 'Am', 'B', 'Em', 'C', 'Am', 'B',
+            'C', 'G', 'Am', 'Em', 'C', 'Am', 'B', 'B',
+            'Em', 'C', 'Am', 'B', 'Em', 'C', 'B', 'Em']
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        ostinato(sc, 'mbox', bar, ch, [0, 2, 1, 2, 0, 2, 1, 3], 76, 96, 0.4)
+        beat = 0.5 + 0.03 * bar
+        sc.note('taiko', bar * 4, 0.5, 'C3', min(0.85, beat + 0.1))
+        sc.note('taiko', bar * 4 + 0.5, 0.5, 'G3', min(0.7, beat - 0.1))
+        sc.note('taiko', bar * 4 + 2, 0.5, 'C3', min(0.8, beat))
+        sc.note('taiko', bar * 4 + 2.5, 0.5, 'G3', min(0.65, beat - 0.15))
+        sc.note('bass', bar * 4, 4, near(bass, 28, 39), 0.4)
+        if bar >= 4:
+            sc.hold('organ', bar * 4, 4, voice(pcs, 52, 66), 0.3)
+        if bar >= 8:
+            for k in range(8):
+                sc.note('pizz', bar * 4 + k * 0.5, 0.5, near(bass, 40, 51) + (12 if k % 4 == 3 else 0), 0.5 if k % 2 == 0 else 0.36)
+            sc.note('timp', bar * 4, 1, near(bass, 40, 52), 0.45)
+        if 8 <= bar < 16:
+            sc.hold('choir', bar * 4, 4, voice(pcs, 55, 67), 0.36)
+        if bar >= 16:
+            pad(sc, 'trem', bar, ch, 55, 70, 0.36)
+            sc.drum('snare', bar * 4 + 1, 0.35)
+            sc.drum('snare', bar * 4 + 3, 0.4)
+    mel = ['B4:2 G4:1 E4:1', 'E4:2 G4:2', 'C5:1.5 B4:0.5 A4:2', 'F#4:4',
+           'B4:2 C5:1 B4:1', 'G4:2 E4:2', 'A4:1 C5:1 E5:2', 'D#5:4']
+    for i, ln in enumerate(mel):
+        sc.line('oboe', (4 + i) * 4, ln, 0.74)
+        sc.line('horn', (16 + i) * 4, ln, 0.66, shift=12)
+        sc.line('strings', (16 + i) * 4, ln, 0.36)
+    for bar in (0, 8, 16):
+        sc.note('bells', bar * 4, 3, 'E3', 0.6)
+        sc.note('bells', bar * 4 + 2, 2, 'B3', 0.42)
+    snare_roll(sc, 23 * 4, 4, 0.15, 0.6)
+    return sc
+
+
+def witchboss():
+    """Broomstick: the witch's theme. Strings running in threes, brass
+    stabs, the organ, xylophone cackling on top. G minor, 3/4, 180 bpm."""
+    sc = Score(180, 36, beats=3, seed=81)
+    P = ['Gm', 'Gm', 'D', 'D', 'Gm', 'Gm', 'Cm', 'D', 'Eb', 'Eb', 'Cm', 'Cm', 'Gm', 'D', 'Gm', 'D']
+    prog = P + P + ['Eb', 'Cm', 'D', 'D']
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        ostinato(sc, 'spicc', bar, ch, [0, 1, 2], 55, 74, 0.6, step=1, dur=0.9)
+        sc.note('bass', bar * 3, 3, near(bass, 26, 37), 0.5)
+        sc.note('tuba', bar * 3, 1, near(bass, 26, 37), 0.55)
+        sc.hold('brass', bar * 3 + 1, 0.5, voice(pcs, 55, 67), 0.5)
+        sc.hold('brass', bar * 3 + 2, 0.5, voice(pcs, 55, 67), 0.45)
+        sc.note('taiko', bar * 3, 0.5, 'C3', 0.8)
+        sc.note('taiko', bar * 3 + 2, 0.5, 'G3', 0.5)
+        if bar % 2 == 0:
+            sc.note('timp', bar * 3, 1, near(bass, 40, 52), 0.6)
+        if bar >= 16:
+            sc.hold('organ', bar * 3, 3, voice(pcs, 52, 66), 0.32)
+            sc.drum('snare', bar * 3 + 1, 0.45)
+    mel = ['D5:1 G5:1 Bb5:1', 'A5:2 G5:1', 'F#5:1 A5:1 D6:1', 'C6:2 A5:1', 'Bb5:1 A5:1 G5:1', 'D5:2 G5:1', 'Eb5:1 G5:1 C6:1', 'A5:3',
+           'Bb5:1 C6:1 D6:1', 'Eb6:2 D6:1', 'C6:1 Bb5:1 A5:1', 'G5:2 Eb5:1', 'D5:1 G5:1 Bb5:1', 'A5:1 F#5:1 D5:1', 'G5:1 D5:1 Bb4:1', 'A4:3']
+    for i, ln in enumerate(mel):
+        sc.line('xylo', i * 3, ln, 0.75)
+        sc.line('trumpet', (16 + i) * 3, ln, 0.78, legato=0.85)
+        sc.line('xylo', (16 + i) * 3, ln, 0.6, shift=12)
+    for bar in (0, 16, 32):
+        sc.drum('crash', bar * 3, 0.8)
+        sc.note('hit', bar * 3, 0.5, 'G3', 0.55)
+    snare_roll(sc, 34 * 3, 6, 0.2, 0.8)
+    return sc
+
+
+def zlobby():
+    """Waiting in the bunker: a music box, celesta, a soft organ and a far
+    bell. A minor, 66 bpm."""
+    sc = Score(66, 12, seed=91)
+    prog = ['Am', 'F', 'Dm', 'E', 'Am', 'F', 'Dm', 'E', 'F', 'G', 'Am', 'E']
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        sc.hold('organ', bar * 4, 4, voice(pcs, 48, 62), 0.22)
+        sc.note('bass', bar * 4, 4, near(bass, 28, 39), 0.28)
+        ostinato(sc, 'harp', bar, ch, [-1, 0, 1, 2], 45, 64, 0.32, step=1, dur=1)
+    mel = ['E5:1 A5:1 C6:1 B5:1', 'A5:2 F5:2', 'D5:1 F5:1 A5:1 G#5:1', 'B5:4',
+           'E6:1 C6:1 A5:1 E5:1', 'F5:2 A5:2', 'D6:1 C6:1 B5:1 A5:1', 'G#5:4',
+           'A5:1 C6:1 F6:2', 'D6:1 B5:1 G5:2', 'E5:1 A5:1 C6:1 E6:1', 'B5:4']
+    for i, ln in enumerate(mel):
+        sc.line('mbox', i * 4, ln, 0.6)
+        if i >= 4:
+            sc.line('celesta', i * 4, ln, 0.32, shift=12)
+    for bar in (0, 6):
+        sc.note('bells', bar * 4, 3, 'A3', 0.35)
+    return sc
+
+
+def c_zwave(sc):
+    sc.note('bells', 0, 3, 'D3', 0.85)
+    sc.note('bells', 1.5, 3, 'A3', 0.6)
+    sc.hold('organ', 0, 4, ['D3', 'A3', 'D4', 'F4'], 0.55)
+    sc.note('trombone', 0.5, 3, 'D3', 0.7)
+    sc.note('tuba', 0.5, 3, 'D2', 0.7)
+    sc.note('timp', 0.5, 1, 'D3', 0.9)
+    sc.note('xylo', 2, 0.3, 'A5', 0.6); sc.note('xylo', 2.33, 0.3, 'G#5', 0.6); sc.note('xylo', 2.66, 0.3, 'A5', 0.7)
+
+
+def c_zclear(sc):
+    for i, p in enumerate(['D5', 'F#5', 'A5', 'D6', 'F#6']):
+        sc.note('mbox', i * 0.25, 1, p, 0.6)
+    sc.hold('organ', 0.5, 3, ['D3', 'A3', 'D4', 'F#4'], 0.4)
+    sc.hold('choir', 1, 3, ['D4', 'F#4', 'A4'], 0.4)
+    sc.note('harp', 1.25, 1, 'D6', 0.4)
+
+
+def c_witchwarn(sc):
+    for i, p in enumerate(['G6', 'F#6', 'Eb6', 'D6', 'C#6', 'Bb5', 'A5', 'G5']):
+        sc.note('xylo', i * 0.12, 0.3, p, 0.75)
+    sc.hold('trem', 0, 4, ['G3', 'C#4', 'G4'], 0.55)
+    sc.note('bells', 1, 3, 'G3', 0.75)
+    sc.hold('organ', 1, 3, ['G2', 'D3', 'G3', 'Bb3', 'C#4'], 0.45)
+    sc.note('hit', 3.5, 0.5, 'G3', 0.7)
+    sc.note('timp', 3.5, 1, 'G2', 0.9)
+    sc.drum('crash', 3.5, 0.8)
+
+
+def c_zover(sc):
+    sc.hold('organ', 0, 4, ['A2', 'E3', 'A3', 'C4', 'E4'], 0.5)
+    sc.hold('organ', 4, 4, ['D3', 'F3', 'A3', 'D4'], 0.45)
+    sc.note('bells', 0, 3, 'A3', 0.7)
+    sc.note('bells', 2.5, 3, 'A3', 0.55)
+    sc.note('bells', 5, 3, 'A2', 0.6)
+    sc.line('bassoon', 0, 'E3:1 D3:1 C3:1 B2:1 A2:4', 0.6)
+
+
 # ---------------------------------------------------------------- short cues
 def cue(bpm, bars, fn, seed=7):
     sc = Score(bpm, bars, seed=seed)
@@ -631,15 +829,18 @@ def c_pickup(sc):
 
 
 THEMES = {
-    'nightwatch': ('Night Watch', 'Strings, horns and taiko - the main theme', nightwatch),
-    'constellation': ('Constellation', 'Harp, celesta and flute, still moving', constellation),
-    'redshift': ('Red Shift', 'Taiko, low brass and trumpets - all out', redshift),
+    'nightwatch': ('Night Watch', 'Strings, horns and taiko - the main theme', nightwatch, 'space'),
+    'constellation': ('Constellation', 'Harp, celesta and flute, still moving', constellation, 'space'),
+    'redshift': ('Red Shift', 'Taiko, low brass and trumpets - all out', redshift, 'space'),
+    'danse': ('Danse of the Dead', 'A skeletons\' waltz on xylophone and harpsichord', danse, 'zombie'),
+    'hollow': ('Hollow Hill', 'A music box, a heartbeat and tolling bells', hollow, 'zombie'),
 }
-LOOPS = {'lobby': lobby, 'boss': boss}
+LOOPS = {'lobby': lobby, 'boss': boss, 'zlobby': zlobby, 'witchboss': witchboss}
 CUES = {
     'count': (120, 1, c_count), 'wave': (120, 1, c_wave), 'clear': (110, 1, c_clear),
     'bosswarn': (90, 2, c_bosswarn), 'victory': (120, 2, c_victory), 'gameover': (76, 2, c_gameover),
     'record': (110, 2, c_record), 'pickup': (120, 1, c_pickup),
+    'zwave': (80, 1, c_zwave), 'zclear': (100, 1, c_zclear), 'witchwarn': (90, 2, c_witchwarn), 'zover': (70, 2, c_zover),
 }
 EDGE = 0.3        # seconds of wrap-around either side of a loop
 
@@ -649,9 +850,9 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     man_path = os.path.join(OUT, 'music.json')
     man = json.load(open(man_path)) if os.path.exists(man_path) else {'themes': {}, 'loops': {}, 'cues': {}}
-    loops = {k: (k, '', fn) for k, fn in LOOPS.items()}
+    loops = {k: (k, '', fn, None) for k, fn in LOOPS.items()}
     for kind, table in (('themes', THEMES), ('loops', loops)):
-        for key, (title, blurb, fn) in table.items():
+        for key, (title, blurb, fn, mode) in table.items():
             if want and key not in want:
                 continue
             sc = fn()
@@ -661,7 +862,7 @@ def main():
             encode(body, os.path.join(OUT, key + '.mp3'))
             entry = {'file': key + '.mp3', 'loopStart': EDGE, 'loopEnd': EDGE + len(mix) / SR, 'bpm': sc.bpm}
             if kind == 'themes':
-                entry.update(title=title, blurb=blurb)
+                entry.update(title=title, blurb=blurb, mode=mode)
             man[kind][key] = entry
             print(f'{key}: {len(mix) / SR:.1f} s loop')
     for key, (bpm, bars, fn) in CUES.items():

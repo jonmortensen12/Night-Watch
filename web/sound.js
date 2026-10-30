@@ -52,14 +52,25 @@ export function listen(fwd, up){
   } else if(L.setOrientation) L.setOrientation(fwd.x, fwd.y, fwd.z, up.x, up.y, up.z);
 }
 
+/* Where the listener stands (zombie mode walks about; space stays at the origin). */
+export function listenAt(x, y, z){
+  if(!AC) return;
+  const L = AC.listener, t = AC.currentTime;
+  if(L.positionX){ L.positionX.setValueAtTime(x, t); L.positionY.setValueAtTime(y, t); L.positionZ.setValueAtTime(z, t); }
+  else if(L.setPosition) L.setPosition(x, y, z);
+}
+
 /* Where an effect plays from: a panner when given a position, else straight to the bus. */
+let refDist = 20;
+/* Zombie mode is in metres and close up: sounds fall off sooner. */
+export function setScale(metres){ refDist = metres ? 3 : 20; }
 function out(pos, gain){
   const g = AC.createGain();
-  g.gain.value = gain;
-  if(pos){
+  g.gain.value = Number.isFinite(gain) ? gain : 0;
+  if(pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) && Number.isFinite(pos.z)){
     const p = AC.createPanner();
     p.panningModel = 'HRTF'; p.distanceModel = 'inverse';
-    p.refDistance = 20; p.rolloffFactor = 0.6; p.maxDistance = 400;
+    p.refDistance = refDist; p.rolloffFactor = 0.6; p.maxDistance = 400;
     // positions are scaled into the panner's idea of nearness
     if(p.positionX){ p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z; }
     else p.setPosition(pos.x, pos.y, pos.z);
@@ -93,10 +104,120 @@ function tone(t, type, f0, f1, dur, dest, vol){
 }
 
 /* key, optional position {x,y,z} relative to the listener, optional volume */
-export function sfx(key, pos, vol){
+export function sfx(key, pos, vol, pitch){
   if(!soundOn()) return;
-  const t = AC.currentTime, v = vol == null ? 1 : vol;
+  const t = AC.currentTime, v = vol == null ? 1 : vol, pk = pitch || 1;
   switch(key){
+    case 'pistol': {
+      const d = out(pos, 0.5 * v);
+      noise(t, 0.12, d, 'bandpass', 2400, 600, 0.8);
+      tone(t, 'square', 320, 70, 0.08, d, 0.6);
+      break;
+    }
+    case 'shotgun': {
+      const d = out(pos, 0.8 * v);
+      noise(t, 0.45, d, 'lowpass', 3000, 200, 0.7);
+      tone(t, 'sine', 110, 40, 0.3, d, 1);
+      // the pump
+      noise(t + 0.38, 0.05, d, 'highpass', 2500, 0, 2);
+      noise(t + 0.5, 0.05, d, 'highpass', 1800, 0, 2);
+      break;
+    }
+    case 'sniper': {
+      const d = out(pos, 0.8 * v);
+      noise(t, 0.08, d, 'highpass', 1500, 0, 0.7);
+      tone(t, 'square', 900, 100, 0.06, d, 0.6);
+      // the crack rolling away across the field
+      noise(t + 0.05, 1.3, d, 'lowpass', 1200, 120, 0.6);
+      noise(t + 0.25, 0.8, d, 'bandpass', 500, 200, 1.5);
+      break;
+    }
+    case 'poof':
+    case 'bigPoof': {
+      const big = key === 'bigPoof';
+      const d = out(pos, (big ? 0.9 : 0.5) * v);
+      noise(t, big ? 1.2 : 0.45, d, 'bandpass', 900, 3500, 1.2);
+      tone(t, 'sine', 300, 900, 0.18, d, 0.4);
+      [1568, 2093, 2637].forEach((f, i) => tone(t + 0.05 + i * 0.05, 'triangle', f, f, 0.15, d, 0.25));
+      if(big) tone(t, 'sine', 90, 40, 1, d, 1);
+      break;
+    }
+    case 'groan': {
+      const d = out(pos, 0.5 * v);
+      const o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+      o.type = 'sawtooth';
+      const f0 = (90 + Math.random() * 40) * pk;
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.linearRampToValueAtTime(f0 * 1.15, t + 0.4);
+      o.frequency.linearRampToValueAtTime(f0 * 0.8, t + 1.1);
+      f.type = 'bandpass'; f.frequency.setValueAtTime(500, t); f.frequency.linearRampToValueAtTime(800, t + 0.5); f.frequency.linearRampToValueAtTime(350, t + 1.1); f.Q.value = 3;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.15); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+      o.connect(f); f.connect(g); g.connect(d); o.start(t); o.stop(t + 1.3);
+      break;
+    }
+    case 'rattle': {
+      const d = out(pos, 0.45 * v);
+      for(let i = 0; i < 9; i++) noise(t + i * 0.045 + Math.random() * 0.02, 0.03, d, 'bandpass', 2500 + Math.random() * 2000, 0, 6);
+      break;
+    }
+    case 'boo': {
+      const d = out(pos, 0.4 * v);
+      const o = AC.createOscillator(), lfo = AC.createOscillator(), lg = AC.createGain(), g = AC.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(330, t); o.frequency.linearRampToValueAtTime(420, t + 0.6); o.frequency.linearRampToValueAtTime(260, t + 1.6);
+      lfo.frequency.value = 6; lg.gain.value = 12; lfo.connect(lg); lg.connect(o.frequency);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.7);
+      o.connect(g); g.connect(d); o.start(t); lfo.start(t); o.stop(t + 1.8); lfo.stop(t + 1.8);
+      break;
+    }
+    case 'squeak': {
+      const d = out(pos, 0.25 * v);
+      for(let i = 0; i < 3; i++) tone(t + i * 0.09, 'sine', 4200 + Math.random() * 1500, 3000, 0.05, d, 0.5);
+      break;
+    }
+    case 'cackle': {
+      const d = out(pos, 0.5 * v);
+      for(let i = 0; i < 6; i++){
+        const f = 700 - i * 40 + Math.random() * 60;
+        tone(t + i * 0.13, 'sawtooth', f * 1.3, f, 0.1, d, 0.35);
+        noise(t + i * 0.13, 0.08, d, 'bandpass', 2000, 0, 3);
+      }
+      break;
+    }
+    case 'thud': {
+      const d = out(pos, 0.5 * v);
+      tone(t, 'sine', 120, 50, 0.18, d, 0.9);
+      noise(t, 0.1, d, 'lowpass', 700, 200, 1);
+      break;
+    }
+    case 'crack': {
+      const d = out(pos, 0.8 * v);
+      noise(t, 0.25, d, 'bandpass', 1800, 400, 1.5);
+      noise(t + 0.06, 0.4, d, 'lowpass', 900, 150, 1);
+      tone(t, 'square', 200, 60, 0.2, d, 0.3);
+      break;
+    }
+    case 'hammer': {
+      const d = out(pos, 0.35 * v);
+      tone(t, 'triangle', 1800, 900, 0.05, d, 0.6);
+      noise(t, 0.04, d, 'bandpass', 3000, 0, 3);
+      break;
+    }
+    case 'alarm': {
+      const d = out(pos, 0.45 * v);
+      for(let i = 0; i < 3; i++) tone(t + i * 0.2, 'square', 880, 660, 0.16, d, 0.5);
+      break;
+    }
+    case 'whistle': {
+      const d = out(pos, 0.35 * v);
+      tone(t, 'sine', 2200, 600, 2.2, d, 0.4);
+      break;
+    }
+    case 'blast': {
+      const d = out(pos, 0.9 * v);
+      noise(t, 1.2, d, 'lowpass', 2500, 80, 0.7);
+      tone(t, 'sine', 80, 30, 0.8, d, 1);
+      break;
+    }
     case 'laser': {
       const d = out(pos, 0.16 * v);
       tone(t, 'sawtooth', 1500 + Math.random() * 200, 220, 0.12, d, 0.8);
@@ -195,9 +316,10 @@ function musicBuf(key){
   return null;
 }
 
-export function musicThemes(){
+export function musicThemes(mode){
   const m = MUSIC.man;
-  return m && m.themes ? Object.entries(m.themes).map(([k, t]) => ({key: k, title: t.title, blurb: t.blurb})) : [];
+  return m && m.themes ? Object.entries(m.themes).filter(([k, t]) => (t.mode || 'space') === (mode || 'space'))
+    .map(([k, t]) => ({key: k, title: t.title, blurb: t.blurb})) : [];
 }
 export function musicCredit(){ return MUSIC.man ? MUSIC.man.credit : ''; }
 export function setMusic(on){ MUSIC.on = on; }

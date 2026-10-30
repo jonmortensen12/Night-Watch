@@ -13,8 +13,14 @@
    Lessons carried over from Mission Control: a phone that says nothing for
    six seconds is away (WebRTC can take far longer to notice), one away for
    thirty has gone, and a phone that comes back with the same device id gets
-   its own seat, colour and score back. */
+   its own seat, colour and score back.
+
+   Two games share the room: space (sim.js) and the bunker (zsim.js). The
+   lobby picks one; both have the same create / join / step / snap shape. */
 import * as NW from './sim.js';
+import * as ZB from './zsim.js';
+const GAMES = {space: NW, zombie: ZB};
+const THEME0 = {space: 'nightwatch', zombie: 'danse'};
 
 export const PROTO = NW.PROTO;
 export const PROTO_MIN = 1;
@@ -25,15 +31,22 @@ const AWAY_MS = 6000, GONE_MS = 30000;
 function cleanName(n){ return String(n || '').replace(/[^\p{L}\p{N} '\-]/gu, '').trim().slice(0, 14); }
 
 function loadSave(){
-  try { return Object.assign({best: 0, bestScore: 0, games: 0, theme: 'nightwatch'}, JSON.parse(localStorage.getItem('nwatch_save') || '{}')); }
-  catch(e){ return {best: 0, bestScore: 0, games: 0, theme: 'nightwatch'}; }
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem('nwatch_save') || '{}') || {}; } catch(e){}
+  // the first build kept one record and one theme, for space
+  const out = {games: s.games || 0, mode: s.mode === 'zombie' ? 'zombie' : 'space',
+    themes: Object.assign({}, THEME0, s.themes || {}),
+    bests: Object.assign({space: {best: s.best || 0, bestScore: s.bestScore || 0}, zombie: {best: 0, bestScore: 0}}, s.bests || {})};
+  if(s.theme && !s.themes) out.themes.space = s.theme;
+  return out;
 }
 
 /* opts: {tv: bool (this host is a TV - every phone is a gunner),
           onSnap(snap) (this device's own screen), onRoom(info), onError(msg)} */
 export function createHost(opts){
-  const S = NW.create((Math.random() * 2 ** 32) >>> 0);
   const save = loadSave();
+  let mode = save.mode, G = GAMES[mode];
+  let S = G.create((Math.random() * 2 ** 32) >>> 0);
   const people = {};        // dev id -> {id, name, role, conn, seen, gone, ready}
   const room = {code: null, status: 'Opening the room...', tv: !!opts.tv};
   let themePicked = false;
@@ -71,7 +84,7 @@ export function createHost(opts){
         people[id] = p;
         send(p, {t: 'host', proto: PROTO, min: PROTO_MIN, tv: room.tv, code: room.code});
         if(p.role === 'player'){
-          const pl = NW.join(S, id, p.name);
+          const pl = G.join(S, id, p.name);
           send(p, {t: 'you', id, c: pl.color});
         }
         roomDirty = true;
@@ -79,7 +92,7 @@ export function createHost(opts){
       }
       const p = id && people[id];
       if(!p) return;
-      if(!p.conn && p.lastConn === c){ p.conn = c; p.gone = 0; if(p.role === 'player') NW.join(S, id, p.name); roomDirty = true; }
+      if(!p.conn && p.lastConn === c){ p.conn = c; p.gone = 0; if(p.role === 'player') G.join(S, id, p.name); roomDirty = true; }
       if(p.conn !== c) return;
       p.seen = performance.now();
       fromPhone(p, d);
@@ -92,25 +105,49 @@ export function createHost(opts){
 
   function drop(p){
     p.conn = null; p.gone = performance.now(); p.ready = false;
-    if(p.role === 'player') NW.leave(S, p.id);
+    if(p.role === 'player') G.leave(S, p.id);
     roomDirty = true;
   }
 
   function fromPhone(p, d){
     if(d.t === 'in'){
       if(p.role !== 'player') return;
-      NW.input(S, p.id, d.a, d.tg, d.f);
+      if(mode === 'space') NW.input(S, p.id, d.a, d.tg, d.f);
+      else ZB.input(S, p.id, d);
     } else if(d.t === 'msl'){
-      if(p.role === 'player') NW.missile(S, p.id, d.tg | 0);
+      if(p.role === 'player' && mode === 'space') NW.missile(S, p.id, d.tg | 0);
+    } else if(d.t === 'mode'){
+      if(GAMES[d.key]) setMode(d.key);
     } else if(d.t === 'ready'){
       if(S.phase === 'lobby'){ p.ready = !!d.v; roomDirty = true; maybeStart(); }
     } else if(d.t === 'go'){
       go();
     } else if(d.t === 'again'){
       if(S.phase === 'over' && S.phaseT > 2.5) go();
+    } else if(d.t === 'lobby'){
+      // back to the lobby: to change the game, or the music, or wait for somebody
+      if(S.phase === 'over' && S.phaseT > 2.5){ G.toLobby(S); Object.values(people).forEach(q => { q.ready = false; }); roomDirty = true; }
     } else if(d.t === 'theme'){
-      if(typeof d.key === 'string' && d.key.length < 24){ save.theme = d.key; themePicked = true; persist(); roomDirty = true; }
+      if(typeof d.key === 'string' && d.key.length < 24){ save.themes[mode] = d.key; themePicked = true; persist(); roomDirty = true; }
     }
+  }
+
+  /* Between games only. Everybody keeps their colour. */
+  function setMode(m){
+    if(m === mode || (S.phase !== 'lobby' && S.phase !== 'over')) return;
+    const keep = Object.values(S.players).filter(q => !q.away).sort((a, b) => a.color - b.color);
+    mode = m; G = GAMES[m];
+    save.mode = m; persist();
+    S = G.create((Math.random() * 2 ** 32) >>> 0);
+    keep.forEach(q => G.join(S, q.id, q.name));
+    Object.values(people).forEach(p => {
+      if(p.role !== 'player' || !p.conn) return;
+      const pl = S.players[p.id] || G.join(S, p.id, p.name);
+      p.ready = false;
+      send(p, {t: 'you', id: p.id, c: pl.color});
+    });
+    themePicked = false;
+    roomDirty = true;
   }
 
   function players(){ return Object.values(people).filter(p => p.conn && p.role === 'player'); }
@@ -123,7 +160,7 @@ export function createHost(opts){
   function go(){
     if(S.phase !== 'lobby' && S.phase !== 'over') return;
     if(!players().length) return;
-    NW.start(S);
+    G.start(S);
     themePicked = false;
     Object.values(people).forEach(p => { p.ready = false; });
     roomDirty = true;
@@ -141,8 +178,9 @@ export function createHost(opts){
   }
 
   function roomInfo(){
-    return {code: room.code, status: room.status, tv: room.tv, theme: save.theme, themePicked,
-      best: save.best, bestScore: save.bestScore,
+    const b = save.bests[mode];
+    return {code: room.code, status: room.status, tv: room.tv, mode, theme: save.themes[mode], themePicked,
+      best: b.best, bestScore: b.bestScore,
       people: Object.values(people).map(p => {
         const pl = S.players[p.id];
         return {id: p.id, n: p.name, role: p.role, c: pl ? pl.color : -1, r: p.ready ? 1 : 0, w: p.conn ? 0 : 1};
@@ -158,7 +196,7 @@ export function createHost(opts){
     acc += dt;
     while(acc >= TICK){
       const was = S.phase;
-      NW.step(S, TICK);
+      G.step(S, TICK);
       acc -= TICK;
       if(was !== 'over' && S.phase === 'over') finish();
     }
@@ -166,7 +204,8 @@ export function createHost(opts){
     if(snapAcc >= SNAP_EVERY){
       snapAcc = 0;
       sweep(now);
-      const s = NW.snap(S);
+      const s = G.snap(S);
+      s.mode = mode;
       if(S.phase === 'over') s.nr = S.newRecord ? 1 : 0;
       if(roomDirty || ++roomEvery >= 20){ s.ro = roomInfo(); roomDirty = false; roomEvery = 0; info(); }
       Object.values(people).forEach(p => send(p, s));
@@ -177,9 +216,10 @@ export function createHost(opts){
   function finish(){
     save.games++;
     const score = Object.values(S.players).reduce((a, p) => a + p.score, 0);
-    S.newRecord = S.wave > save.best;
-    if(S.wave > save.best) save.best = S.wave;
-    if(score > save.bestScore) save.bestScore = score;
+    const b = save.bests[mode];
+    S.newRecord = S.wave > b.best && S.wave >= 2;
+    if(S.wave > b.best) b.best = S.wave;
+    if(score > b.bestScore) b.bestScore = Math.round(score);
     persist();
     roomDirty = true;
   }
@@ -203,7 +243,7 @@ export function createHost(opts){
   open();
   const timer = setInterval(tick, 1000 / 60);
   return {
-    S, room, local, go, roomInfo,
+    get S(){ return S; }, get mode(){ return mode; }, setMode, room, local, go, roomInfo,
     // the TV's own keyboard
     key: k => { if(k === 'go') go(); },
     destroy: () => { clearInterval(timer); if(handle) handle.destroy(); },

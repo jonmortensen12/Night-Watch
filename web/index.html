@@ -100,18 +100,25 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
 <div id="lobby" class="panel">
   <div>
     <h1>NIGHT WATCH</h1>
-    <p class="tag">Your phone is a window into space. They are all around you.</p>
+    <p class="tag" id="tagline">Your phone is a window into space. They are all around you.</p>
   </div>
   <div id="qrWrap">
     <canvas id="qr" width="400" height="400"></canvas>
     <div><div class="code" id="code">····</div><div class="url" id="url"></div><div id="status"></div></div>
   </div>
-  <ol>
+  <ol id="howSpace">
     <li><b>Scan</b> the code with every phone.</li>
     <li><b>Point your phone at this TV</b> and tap LOCK FRONT, so you all share one sky.</li>
     <li><b>Look everywhere</b> - up, behind, under the floor. <b>Hold a finger</b> on the screen to fire.</li>
     <li>Hold your aim on one ship to <b>lock a missile</b>.</li>
   </ol>
+  <ol id="howZombie" style="display:none">
+    <li><b>Scan</b> the code; <b>point at this TV</b> and tap LOCK FRONT.</li>
+    <li><b>Turn your body</b> to look; the <b>stick</b> walks you round the bunker.</li>
+    <li>Pistol, shotgun or <b>sniper</b> (zoom!). Hold a finger on the right to fire.</li>
+    <li>Stand at a damaged wall and <b>hold REPAIR</b>. If one gets in, you lose.</li>
+  </ol>
+  <div class="hint" id="modeLine" style="margin-top:0"></div>
   <div class="crew" id="crew"></div>
   <div class="hint" id="hint">Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).</div>
   <div class="hint" style="margin-top:0">Just you? Open this page on your phone and tap <b>START A GAME ON THIS PHONE</b> - or <a id="soloLink" href="play.html" style="color:var(--acc)">play on this computer</a> (drag to look, Space to fire).</div>
@@ -125,7 +132,7 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
   <h2 id="overTitle">THE STATION HAS FALLEN</h2>
   <div class="sub" id="overSub"></div>
   <table id="results"></table>
-  <div class="sub" style="margin-top:2vh">PLAY AGAIN on any phone (or Enter)</div>
+  <div class="sub" style="margin-top:2vh">PLAY AGAIN on any phone (or Enter) · LOBBY to change the game</div>
 </div>
 
 <div id="watchForm" class="panel off">
@@ -146,6 +153,8 @@ import {World, dirWords} from './world.js';
 import {createHost, PROTO} from './host.js';
 import {COLORS, awards, TYPES} from './sim.js';
 import * as SND from './sound.js';
+import {createZombieTV} from './zombie-tv.js';
+import {awards as zAwards, SECTIONS, MONSTERS} from './zsim.js';
 
 const $ = id => document.getElementById(id);
 const isLocal = NWNet.isLocal();
@@ -205,6 +214,8 @@ function drawRoom(){
     c.appendChild(s);
   });
   const n = room.people.filter(p => p.role === 'player' && !p.w).length;
+  switchMode(room.mode === 'zombie' ? 'zombie' : 'space');
+  $('modeLine').innerHTML = 'Game: <b>' + (room.mode === 'zombie' ? 'BUNKER 🎃' : 'SPACE 🚀') + '</b> - change it on any phone.';
   $('hint').innerHTML = n ? 'Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).' +
     (room.best ? '<br>Best here: wave ' + room.best + ' · ' + room.bestScore.toLocaleString() + ' points' : '') : 'Waiting for phones...';
 }
@@ -222,21 +233,53 @@ function drawQr(cv, text){
   for(let y = 0; y < n; y++) for(let x = 0; x < n; x++) if(m[y][x]) g.fillRect(o + x * s, o + y * s, s, s);
 }
 
+/* ---------- which game ---------- */
+let mode = 'space', ztv = null;
+function switchMode(m){
+  if(m === mode) return;
+  mode = m;
+  $('view').style.display = $('hud').style.display = m === 'zombie' ? 'none' : '';
+  $('hullLbl').style.display = $('hullWrap').style.display = m === 'zombie' ? 'none' : '';
+  if(m === 'zombie'){
+    if(!ztv){
+      ztv = createZombieTV({SND, banner, call, players: () => S && S.pl, onEvent: sharedEvent});
+      zhud = document.createElement('canvas');
+      zhud.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none';
+      document.body.insertBefore(zhud, $('top'));
+    }
+    ztv.setActive(true); zhud.style.display = '';
+  } else if(ztv){ ztv.setActive(false); zhud.style.display = 'none'; }
+  $('howSpace').style.display = m === 'zombie' ? 'none' : '';
+  $('howZombie').style.display = m === 'zombie' ? '' : 'none';
+  $('tagline').textContent = m === 'zombie' ? 'The bunker. Monsters on every side. Hold the walls.' : 'Your phone is a window into space. They are all around you.';
+}
+let zhud = null;
+function sharedEvent(ev){
+  const k = ev[0], z = mode === 'zombie';
+  if(k === 'wave'){ SND.cue(z ? 'zwave' : 'wave'); banner('WAVE ' + ev[1], ev[2] ? (z ? 'The witch is coming' : 'Dreadnought inbound') : ''); }
+  else if(k === 'clear') SND.cue(z ? 'zclear' : 'clear');
+  else if(k === 'over') SND.cue(S && S.nr ? 'record' : z ? 'zover' : 'gameover');
+  else if(k === 'count') SND.cue('count');
+}
+
 /* ---------- the game, as the TV shows it ---------- */
 let phase = 'lobby', bannerT = 0;
 function onSnap(s){
   const was = phase;
   S = s;
+  switchMode(s.mode === 'zombie' ? 'zombie' : 'space');
   if(s.ro && watching){ room = s.ro; }
-  world.feed(s);
+  if(mode === 'zombie') ztv.onSnap(s); else world.feed(s);
   phase = s.ph;
   $('lobby').classList.toggle('off', phase !== 'lobby' || watching);
   $('board').classList.toggle('off', phase === 'lobby');
   $('top').style.visibility = phase === 'lobby' ? 'hidden' : '';
   $('over').classList.toggle('off', phase !== 'over');
   $('wave').textContent = phase === 'lobby' ? '' : s.w ? 'WAVE ' + s.w : 'GET READY';
-  $('hullBar').style.width = Math.max(0, s.hull) + '%';
-  $('hullBar').classList.toggle('low', s.hull < 35);
+  if(mode === 'space'){
+    $('hullBar').style.width = Math.max(0, s.hull) + '%';
+    $('hullBar').classList.toggle('low', s.hull < 35);
+  }
   if(phase === 'count') banner(String(Math.ceil(s.pt)), 'Point at the TV and tap LOCK FRONT');
   else if(phase === 'break') banner('WAVE ' + s.w + ' CLEARED', 'Next wave in ' + Math.ceil(s.pt));
   if(phase === 'over' && was !== 'over') results();
@@ -260,8 +303,14 @@ function board(){
     d.querySelector('.s').textContent = p.s.toLocaleString();
     d.querySelector('.kk').textContent = p.k + ' kills';
     const h = d.querySelector('.heat i');
-    h.style.width = p.h + '%'; h.style.background = p.l ? '#ff3355' : p.h > 70 ? '#ff7a3d' : COLORS[p.c];
-    d.querySelector('.mm').textContent = '▲'.repeat(p.m);
+    if(mode === 'zombie'){
+      h.parentNode.style.visibility = 'hidden';
+      d.querySelector('.mm').textContent = p.r && p.fx >= 0 ? '🔨 ' + SECTIONS[p.fx].name : ['🔫 pistol', '💥 shotgun', '🎯 sniper'][p.w] || '';
+    } else {
+      h.parentNode.style.visibility = '';
+      h.style.width = p.h + '%'; h.style.background = p.l ? '#ff3355' : p.h > 70 ? '#ff7a3d' : COLORS[p.c];
+      d.querySelector('.mm').textContent = '▲'.repeat(p.m);
+    }
   });
 }
 
@@ -286,6 +335,8 @@ function call(text, color){
 }
 
 function results(){
+  if(mode === 'zombie') return zResults();
+  $('overTitle').textContent = 'THE STATION HAS FALLEN';
   const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
   const aw = awards(pl);
   $('overSub').innerHTML = '';
@@ -299,6 +350,28 @@ function results(){
     if(aw[p.id]){ const a = document.createElement('span'); a.className = 'award'; a.textContent = aw[p.id]; n.appendChild(a); }
     tr.appendChild(n);
     for(const v of [p.s.toLocaleString(), p.k, p.tp, p.sh ? Math.round(100 * p.hi / p.sh) + '%' : '-']){
+      const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+    }
+    t.appendChild(tr);
+  });
+}
+
+function zResults(){
+  const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
+  const aw = zAwards(pl), why = S.why;
+  $('overTitle').textContent = 'THEY GOT IN!';
+  $('overSub').innerHTML = '';
+  $('overSub').appendChild(document.createTextNode((why ? 'A ' + MONSTERS[why.type].name + ' came through the ' + SECTIONS[why.sec].name + ' wall' : 'The bunker fell') +
+    ' on wave ' + S.w + ' · ' + pl.reduce((a, p) => a + p.s, 0).toLocaleString() + ' points together. '));
+  if(S.nr){ const r = document.createElement('span'); r.className = 'record'; r.textContent = 'NEW RECORD!'; $('overSub').appendChild(r); }
+  const t = $('results');
+  t.innerHTML = '<tr><th></th><th>score</th><th>kills</th><th>wall fixed</th><th>saves</th></tr>';
+  pl.forEach(p => {
+    const tr = document.createElement('tr');
+    const n = document.createElement('td'); n.style.color = COLORS[p.c]; n.textContent = p.n;
+    if(aw[p.id]){ const a = document.createElement('span'); a.className = 'award'; a.textContent = aw[p.id]; n.appendChild(a); }
+    tr.appendChild(n);
+    for(const v of [p.s.toLocaleString(), p.k, p.rp + '%', p.sv]){
       const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
     }
     t.appendChild(tr);
@@ -323,10 +396,7 @@ world.onEvent = ev => {
     SND.cue('bosswarn');
     setTimeout(() => { const b = S && S.boss && world.posOf(S.boss); banner('DREADNOUGHT', b ? 'Coming in ' + dirWords(b.x, b.y, b.z) + ' - shoot its turrets' : 'Shoot its turrets'); }, 400);
   } else if(k === 'shield'){ SND.sfx('shieldDown', null, 0.8); banner('SHIELD DOWN', 'Hit the core!'); }
-  else if(k === 'wave'){ SND.cue('wave'); banner('WAVE ' + ev[1], ev[2] ? 'Dreadnought inbound' : ''); }
-  else if(k === 'clear') SND.cue('clear');
-  else if(k === 'over') SND.cue(S && S.nr ? 'record' : 'gameover');
-  else if(k === 'count') SND.cue('count');
+  else if(k === 'wave' || k === 'clear' || k === 'over' || k === 'count') sharedEvent(ev);
   else if(k === 'pick'){
     SND.cue('pickup') || SND.sfx('pickup');
     const who = S && S.pl.find(p => p.c === ev[2]);
@@ -377,12 +447,22 @@ addEventListener('keydown', e => {
 function frame(){
   requestAnimationFrame(frame);
   const now = performance.now();
-  world.render();
-  drawHud(now);
+  if(mode === 'zombie'){
+    ztv.frame(Math.min(0.1, (now - (frame.last || now)) / 1000));
+    const g = zhud.getContext('2d');
+    if(zhud.width !== innerWidth){ zhud.width = innerWidth; zhud.height = innerHeight; }
+    g.clearRect(0, 0, zhud.width, zhud.height);
+    if(phase !== 'lobby') ztv.drawHud(g);
+  } else {
+    world.render();
+    drawHud(now);
+  }
+  frame.last = now;
   if(now > bannerT) $('banner').classList.remove('on');
   const theme = room && room.theme;
-  const want = phase === 'lobby' ? (theme && theme !== 'off' && room.themePicked ? theme : 'lobby') : phase === 'over' ? null :
-    S && S.boss ? 'boss' : theme === 'off' ? null : theme || 'nightwatch';
+  const z = mode === 'zombie';
+  const want = phase === 'lobby' ? (theme && theme !== 'off' && room && room.themePicked ? theme : z ? 'zlobby' : 'lobby') : phase === 'over' ? null :
+    S && S.boss ? (z ? 'witchboss' : 'boss') : theme === 'off' ? null : theme || (z ? 'danse' : 'nightwatch');
   SND.music(want);
   const cr = SND.musicCredit();
   if(cr && !$('credit').textContent) $('credit').textContent = cr;
@@ -390,7 +470,8 @@ function frame(){
 requestAnimationFrame(frame);
 setInterval(() => $('soundPill').classList.toggle('off', SND.soundOn()), 1000);
 
-window.NW_TV = {host: () => host, state: () => ({phase, wave: S && S.w, hull: S && S.hull, room, players: S && S.pl, ents: world.ents.size})};
+window.NW_TV = {host: () => host, state: () => ({phase, mode, wave: S && S.w, hull: S && S.hull, secs: S && S.sec, room, players: S && S.pl,
+  ents: mode === 'zombie' ? (ztv ? ztv.yard.mons.size : 0) : world.ents.size})};
 </script>
 </body>
 </html>

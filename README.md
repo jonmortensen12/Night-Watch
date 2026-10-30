@@ -14,6 +14,14 @@ a missile. Keep the station alive as long as you can.
 
 Best played on the floor or in swivel chairs.
 
+**Bunker** is the second game, picked in the lobby: a small wooden bunker
+in a graveyard at night, with Halloween monsters coming from every side —
+pumpkinheads, skeletons, bats, ghosts that float through walls, brutes, and
+a witch dropping pumpkin bombs. Turn to look, walk with the stick, switch
+between a pistol, a shotgun and a sniper rifle with a scope, and hold
+REPAIR at the walls they have battered. If one gets in, you lose. No
+blood — they go poof.
+
 See `HANDOFF.md` for how it works and `CLAUDE.md` for the checks to run
 before shipping.
 

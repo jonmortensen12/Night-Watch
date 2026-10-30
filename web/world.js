@@ -237,7 +237,7 @@ void main(){
 }`;
 
 /* ---------- little textures, drawn once ---------- */
-function canvasTex(size, draw){
+export function canvasTex(size, draw){
   const c = document.createElement('canvas');
   c.width = c.height = size;
   draw(c.getContext('2d'), size);
@@ -245,7 +245,7 @@ function canvasTex(size, draw){
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-function glowTex(){
+export function glowTex(){
   return canvasTex(128, (g, s) => {
     const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
     r.addColorStop(0, 'rgba(255,255,255,1)');
@@ -255,7 +255,7 @@ function glowTex(){
     g.fillStyle = r; g.fillRect(0, 0, s, s);
   });
 }
-function ringTex(){
+export function ringTex(){
   return canvasTex(256, (g, s) => {
     const r = g.createRadialGradient(s / 2, s / 2, s * 0.3, s / 2, s / 2, s / 2);
     r.addColorStop(0, 'rgba(255,255,255,0)');
@@ -265,7 +265,7 @@ function ringTex(){
     g.fillStyle = r; g.fillRect(0, 0, s, s);
   });
 }
-function textSprite(text, color, h){
+export function textSprite(text, color, h){
   const c = document.createElement('canvas');
   const g = c.getContext('2d');
   g.font = '700 64px system-ui, sans-serif';
@@ -285,7 +285,7 @@ function textSprite(text, color, h){
 }
 
 /* ---------- particles: sparks, trails, explosions ---------- */
-class Particles {
+export class Particles {
   constructor(n){
     this.n = n; this.next = 0;
     this.pos = new Float32Array(n * 3); this.vel = new Float32Array(n * 3);
@@ -343,7 +343,7 @@ class Particles {
 
 /* ---------- beams: lasers and bolts, camera-facing quads ---------- */
 const beamGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
-class Beam {
+export class Beam {
   constructor(scene){
     this.mat = new THREE.ShaderMaterial({vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG,
       uniforms: {uColor: {value: new THREE.Color()}, uAlpha: {value: 1}},
@@ -379,7 +379,7 @@ const _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _o = new THREE.Obje
    target). Gunmetal hulls that pick up the sky's reflections; every
    glowing part is a plain colour brighter than white, which is what the
    bloom catches. */
-function hot(hex, k){ const c = new THREE.Color(hex); c.multiplyScalar(k || 3); return c; }
+export function hot(hex, k){ const c = new THREE.Color(hex); c.multiplyScalar(k || 3); return c; }
 function glowMat(hex, k){ return new THREE.MeshBasicMaterial({color: hot(hex, k)}); }
 
 function buildShip(type, glow){

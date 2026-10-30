@@ -21,12 +21,13 @@ Run the checks from the repo root.
 ## Before shipping
 
 ```
-node simcheck.mjs    # the simulation, headless: waves, guns, the dreadnought, tuning with computer gunners
-node netcheck.mjs    # the TV and three phones in Chromium over ?local=1, then a phone-hosted game a TV watches
+node simcheck.mjs    # both simulations, headless: space and the bunker, tuning with computer players
+node netcheck.mjs    # the TV and phones in Chromium over ?local=1: space, a phone-hosted game, then the bunker
 node tools/art.mjs   # redraw the icons and link preview after changing how ships or the sky look
 python3 tools/samples.py && python3 tools/music.py   # re-render web/music/ after changing a piece
 ```
 
-`web/sim.js` decides everything that happens and draws nothing. Change the
+`web/sim.js` (space) and `web/zsim.js` (the bunker) decide everything that
+happens and draw nothing. Change the
 difficulty there and `simcheck` says whether the waves still last a
 sensible time with one, two and four players.

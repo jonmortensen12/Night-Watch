@@ -95,6 +95,10 @@ td.n { font-weight: 800; }
 td.r { text-align: right; }
 .award { color: var(--gold); font-size: 12px; font-weight: 700; display: block; }
 .record { color: var(--gold); font-weight: 900; letter-spacing: 0.08em; }
+/* zombie mode: the bunker's own view and controls take over */
+body.mode-zombie #view, body.mode-zombie #hud, body.mode-zombie #missileBtn, body.mode-zombie #fireBtn, body.mode-zombie #hullWrap { display: none !important; }
+body.mode-zombie #top { justify-content: space-between; }
+.modes button { font-size: 15px; padding: 12px 10px; }
 </style>
 <script type="importmap">{"imports": {"three": "./lib/three.module.min.js"}}</script>
 </head>
@@ -153,6 +157,12 @@ td.r { text-align: right; }
   <p class="sub" id="lobbySub">Look around: the whole sky is yours. Tap READY when you are.</p>
   <div id="qrBox"><canvas id="qr" width="168" height="168"></canvas><div class="code" id="qrCode"></div><div class="sub">Friends scan this, or open the game and type the code</div></div>
   <div class="crew" id="crew"></div>
+  <label>Game</label>
+  <div class="themes modes" id="modes">
+    <button data-mode="space">🚀 SPACE</button>
+    <button data-mode="zombie">🎃 BUNKER</button>
+  </div>
+  <p class="sub" id="modeHelp" style="margin:6px 0 0"></p>
   <label>Music</label>
   <div class="themes" id="themes"></div>
   <div class="row"><button class="big go" id="readyBtn">READY</button></div>
@@ -164,7 +174,7 @@ td.r { text-align: right; }
   <h2 id="overTitle">The station has fallen</h2>
   <p class="sub" id="overSub"></p>
   <table id="results"></table>
-  <div class="row"><button class="big go" id="againBtn" disabled>PLAY AGAIN</button></div>
+  <div class="row"><button class="big alt" id="lobbyBtn" disabled style="flex:0.6">LOBBY</button><button class="big go" id="againBtn" disabled>PLAY AGAIN</button></div>
 </div>
 
 <script src="net.js"></script>
@@ -175,6 +185,8 @@ import {World, dirWords} from './world.js';
 import {createHost, PROTO} from './host.js';
 import {COLORS, LASER, MISSILE, TYPES} from './sim.js';
 import * as SND from './sound.js';
+import {createZombiePhone} from './zombie-phone.js';
+import {awards as zAwards, SECTIONS, MONSTERS} from './zsim.js';
 
 const $ = id => document.getElementById(id);
 const isLocal = NWNet.isLocal();
@@ -298,12 +310,49 @@ fb.addEventListener('pointerdown', e => { e.preventDefault(); fb.setPointerCaptu
 ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => fb.addEventListener(t, e => trigger('fb' + e.pointerId, false)));
 addEventListener('keydown', e => {
   if(e.target.tagName === 'INPUT') return;
+  if(mode === 'zombie' && zctl){ if(e.code === 'KeyF') lockFront(); else zctl.keydown(e); return; }
   if(e.code === 'Space'){ e.preventDefault(); trigger('key', true); }
   if(e.code === 'KeyM') fireMissile();
   if(e.code === 'KeyF') lockFront();
 });
-addEventListener('keyup', e => { if(e.code === 'Space') trigger('key', false); });
-function releaseAll(){ fingers.clear(); setFiring(false); }
+addEventListener('keyup', e => { if(mode === 'zombie' && zctl){ zctl.keyup(e); return; } if(e.code === 'Space') trigger('key', false); });
+function releaseAll(){ fingers.clear(); setFiring(false); if(zctl) zctl.release(); }
+
+/* ---------- which game: space, or the bunker ---------- */
+let mode = 'space', zctl = null;
+function switchMode(m){
+  if(m === mode) return;
+  mode = m;
+  document.body.classList.toggle('mode-zombie', m === 'zombie');
+  releaseAll();
+  SND.setScale(m === 'zombie');
+  if(m === 'zombie'){
+    if(!zctl) zctl = createZombiePhone({
+      tx, SND, banner, toast, callout, buzz,
+      me: () => me.c, isDrag: () => dragMode,
+      look: (dx, dy) => {
+        const k = (zctl.yard.cam.fov * Math.PI / 180) / innerHeight;
+        dragYaw += dx * k; dragPitch = Math.max(-1.55, Math.min(1.55, dragPitch + dy * k));
+      },
+      onEvent: sharedEvent,
+    });
+    zctl.setActive(true);
+    if(me.c >= 0) zctl.yard.setMe(me.c);
+  } else {
+    if(zctl) zctl.setActive(false);
+    SND.listenAt(0, 0, 0);
+  }
+  drawRoom();
+}
+
+/* the events both games have */
+function sharedEvent(ev){
+  const k = ev[0];
+  if(k === 'wave'){ SND.cue(mode === 'zombie' ? 'zwave' : 'wave') || SND.sfx('click'); banner('WAVE ' + ev[1], ev[2] ? (mode === 'zombie' ? 'The witch is coming' : 'Dreadnought inbound') : ''); }
+  else if(k === 'clear') SND.cue(mode === 'zombie' ? 'zclear' : 'clear');
+  else if(k === 'over'){ releaseAll(); SND.cue(S && S.nr ? 'record' : mode === 'zombie' ? 'zover' : 'gameover'); buzz([200, 100, 300]); }
+  else if(k === 'count') SND.cue('count');
+}
 
 /* ---------- joining ---------- */
 let conn = null, handle = null, code = '', myName = recall('nwatch_name') || '';
@@ -451,11 +500,13 @@ function onHost(d){
   } else if(d.t === 'you'){
     me.c = d.c; me.id = d.id;
     world.setMe(d.c);
+    if(zctl) zctl.yard.setMe(d.c);
     $('wave').style.color = COLORS[d.c];
   } else if(d.t === 's'){
     S = d; lastSnap = performance.now();
+    switchMode(d.mode === 'zombie' ? 'zombie' : 'space');
     if(d.ro){ room = d.ro; drawRoom(); }
-    world.feed(d);
+    if(mode === 'zombie') zctl.onSnap(d); else world.feed(d);
     state();
   }
 }
@@ -471,23 +522,26 @@ function state(){
   const p = myPlayer();
   const was = phase;
   phase = S.ph;
-  if(p){
+  if(p && mode === 'zombie') $('score').textContent = p.s.toLocaleString();
+  if(p && mode === 'space'){
     // the host's heat is the truth; this phone guesses between snapshots
     hot = !!p.l;
     heat = heat * 0.5 + p.h * 0.5;
     missiles = p.m;
     $('score').textContent = p.s.toLocaleString();
   }
-  $('hullBar').style.width = Math.max(0, S.hull) + '%';
-  $('hullBar').classList.toggle('low', S.hull < 35);
+  if(mode === 'space'){
+    $('hullBar').style.width = Math.max(0, S.hull) + '%';
+    $('hullBar').classList.toggle('low', S.hull < 35);
+  }
   $('wave').textContent = phase === 'lobby' ? 'LOBBY' : S.w ? 'WAVE ' + S.w : 'GET READY';
   $('mCount').textContent = missiles;
   $('lobby').classList.toggle('on', phase === 'lobby' && !$('lockScr').classList.contains('on'));
   $('over').classList.toggle('on', phase === 'over');
   if(phase === 'over' && was !== 'over') results();
-  if(phase === 'over') $('againBtn').disabled = S.pt < 2.5;
-  if(phase === 'count') banner(String(Math.ceil(S.pt)), 'Find them. Shoot them.');
-  else if(phase === 'break') banner('WAVE ' + S.w + ' CLEARED', 'Next wave in ' + Math.ceil(S.pt) + ' - point at FRONT and tap ⌖ to re-lock');
+  if(phase === 'over') $('againBtn').disabled = $('lobbyBtn').disabled = S.pt < 2.5;
+  if(phase === 'count') banner(String(Math.ceil(S.pt)), mode === 'zombie' ? 'Keep them out of the bunker' : 'Find them. Shoot them.');
+  else if(phase === 'break') banner('WAVE ' + S.w + ' CLEARED', 'Next wave in ' + Math.ceil(S.pt) + (mode === 'zombie' ? ' - repair the walls!' : ' - point at FRONT and tap ⌖ to re-lock'));
 }
 
 function banner(t, sub){
@@ -530,9 +584,7 @@ world.onEvent = ev => {
     SND.cue('bosswarn');
     banner('DREADNOUGHT', 'Shoot its four turrets to drop the shield');
   } else if(k === 'shield'){ SND.sfx('shieldDown', world.posOf(ev[1])); banner('SHIELD DOWN', 'Hit the core!'); }
-  else if(k === 'wave'){ SND.cue('wave') || SND.sfx('click'); banner('WAVE ' + ev[1], ev[2] ? 'Dreadnought inbound' : ''); }
-  else if(k === 'clear'){ SND.cue('clear'); }
-  else if(k === 'over'){ releaseAll(); SND.cue(S && S.nr ? 'record' : 'gameover'); buzz([200, 100, 300]); }
+  else if(k === 'wave' || k === 'clear' || k === 'over' || k === 'count') sharedEvent(ev);
   else if(k === 'pick'){
     SND.cue('pickup') || SND.sfx('pickup');
     toast({repair: 'Hull repaired', rapid: 'RAPID FIRE - no heat for 10 s', missiles: 'Missiles refilled'}[ev[1]] || 'Supplies');
@@ -583,6 +635,7 @@ let lockCand = 0;
 let sendT = 0;
 function sendIn(){
   sendT = 0;
+  if(mode === 'zombie'){ if(zctl) zctl.send(); return; }
   tx({t: 'in', a: [+fwd.x.toFixed(3), +fwd.y.toFixed(3), +fwd.z.toFixed(3)], tg: aimTarget ? aimTarget.id : 0, f: firing});
 }
 
@@ -721,9 +774,15 @@ function drawRoom(){
     const url = location.href.split('#')[0].split('?')[0] + (isLocal ? '?local=1' : '') + '#' + room.code;
     if(qrFor !== url){ qrFor = url; drawQr($('qr'), url); }
   } else if(host) $('lobbySub').textContent = room.status || '';
+  const rm = room.mode || 'space';
+  [...$('modes').children].forEach(b => b.classList.toggle('sel', b.dataset.mode === rm));
+  $('modeHelp').textContent = rm === 'zombie'
+    ? 'Monsters attack the bunker from every side. Walk with the stick, turn with your body, switch guns at the top. Stand at a damaged wall and hold REPAIR. If one gets in, you lose.'
+    : 'Enemy ships all around you - above, behind, under the floor. Hold a finger to fire; hold your aim on one to lock a missile.';
   const th = $('themes');
-  const list = SND.musicThemes();
-  if(list.length && th.childElementCount !== list.length + 1){
+  const list = SND.musicThemes(rm);
+  if(list.length && (th.childElementCount !== list.length + 1 || th.dataset.mode !== rm)){
+    th.dataset.mode = rm;
     th.innerHTML = '';
     list.concat([{key: 'off', title: 'Off'}]).forEach(t => {
       const b = document.createElement('button');
@@ -735,9 +794,15 @@ function drawRoom(){
   [...th.children].forEach(b => b.classList.toggle('sel', b.dataset.key === room.theme));
 }
 let ready = false;
+$('modes').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  SND.unlock(); tx({t: 'mode', key: b.dataset.mode}); SND.sfx('click');
+});
 $('readyBtn').addEventListener('click', () => { SND.unlock(); ready = !ready; tx({t: 'ready', v: ready}); SND.sfx('click'); });
 $('startNow').addEventListener('click', () => { SND.unlock(); tx({t: 'go'}); });
 $('againBtn').addEventListener('click', () => { tx({t: 'again'}); });
+$('lobbyBtn').addEventListener('click', () => { tx({t: 'lobby'}); });
 
 function drawQr(cv, text){
   const m = qrMatrix(text, 'M'), n = m.length, g = cv.getContext('2d');
@@ -749,6 +814,7 @@ function drawQr(cv, text){
 }
 
 function results(){
+  if(mode === 'zombie') return zResults();
   const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
   const aw = awardsOf(pl);
   $('overTitle').textContent = 'The station has fallen';
@@ -772,6 +838,30 @@ function results(){
 }
 import {awards as awardsOf} from './sim.js';
 
+function zResults(){
+  const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
+  const aw = zAwards(pl);
+  const why = S.why;
+  $('overTitle').textContent = 'They got in!';
+  $('overSub').innerHTML = '';
+  const sub = document.createElement('span');
+  sub.textContent = (why ? 'A ' + MONSTERS[why.type].name + ' got in through the ' + SECTIONS[why.sec].name + ' wall' : 'The bunker fell') + ' on wave ' + S.w + '. ';
+  $('overSub').appendChild(sub);
+  if(S.nr){ const r = document.createElement('span'); r.className = 'record'; r.textContent = 'NEW RECORD!'; $('overSub').appendChild(r); }
+  const t = $('results');
+  t.innerHTML = '<tr><td></td><td class="r">score</td><td class="r">kills</td><td class="r">fixed</td></tr>';
+  pl.forEach(p => {
+    const tr = document.createElement('tr');
+    const n = document.createElement('td'); n.className = 'n'; n.style.color = COLORS[p.c]; n.textContent = p.n;
+    if(aw[p.id]){ const a = document.createElement('span'); a.className = 'award'; a.textContent = aw[p.id]; n.appendChild(a); }
+    tr.appendChild(n);
+    for(const v of [p.s.toLocaleString(), p.k, p.rp]){
+      const td = document.createElement('td'); td.className = 'r'; td.textContent = v; tr.appendChild(td);
+    }
+    t.appendChild(tr);
+  });
+}
+
 /* ---------- the loop ---------- */
 let lastT = performance.now();
 function frame(){
@@ -783,19 +873,24 @@ function frame(){
     if(e) NW_TEST.aim(e.d.x, e.d.y, e.d.z); else testTrack = 0;
   }
   updateView();
-  aimTarget = phase === 'lobby' ? null : world.pick(fwd);
-  if(S){ gun(dt); lockStep(dt); }
-  sendT += dt;
-  if(joined && sendT >= 0.05) sendIn();
-  world.render();
-  drawHud(now);
+  if(mode === 'zombie' && zctl){
+    zctl.frame(dt, now, viewQ);
+  } else {
+    aimTarget = phase === 'lobby' ? null : world.pick(fwd);
+    if(S){ gun(dt); lockStep(dt); }
+    sendT += dt;
+    if(joined && sendT >= 0.05) sendIn();
+    world.render();
+    drawHud(now);
+  }
   if(now > bannerT) $('banner').classList.remove('on');
   if(now > toastT) $('toast').classList.remove('on');
   if(now > calloutT) $('callout').textContent = '';
   // the music: the lobby's, the chosen theme's, or the dreadnought's
   const theme = room && room.theme;
-  const want = !S ? null : phase === 'lobby' ? (theme && theme !== 'off' && room.themePicked ? theme : 'lobby') : phase === 'over' ? null :
-    (S.boss ? 'boss' : theme === 'off' ? null : theme || 'nightwatch');
+  const z = mode === 'zombie';
+  const want = !S ? null : phase === 'lobby' ? (theme && theme !== 'off' && room.themePicked ? theme : z ? 'zlobby' : 'lobby') : phase === 'over' ? null :
+    (S.boss ? (z ? 'witchboss' : 'boss') : theme === 'off' ? null : theme || (z ? 'danse' : 'nightwatch'));
   SND.music(want);
 }
 requestAnimationFrame(frame);
@@ -808,6 +903,8 @@ window.NW_TEST = {
   fire(on){ trigger('test', !!on); },
   missile: fireMissile,
   host: () => host,
+  z: () => zctl && zctl.test,
+  mode: () => mode,
   world: () => world,
   state: () => ({phase, me: me.c, hull: S && S.hull, wave: S && S.w, target: aimTarget ? aimTarget.id : 0, lockId,
     ents: [...world.ents.values()].map(e => ({id: e.id, type: e.type, p: [e.d.x, e.d.y, e.d.z], vis: e.vis})),
