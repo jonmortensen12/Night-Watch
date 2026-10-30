@@ -124,6 +124,9 @@ export function createHost(opts){
       go();
     } else if(d.t === 'again'){
       if(S.phase === 'over' && S.phaseT > 2.5) go();
+    } else if(d.t === 'net'){
+      // how this phone reaches us, as it measured it
+      if(['wifi', 'internet', 'relay', 'local'].indexOf(d.k) >= 0 && p.net !== d.k){ p.net = d.k; roomDirty = true; }
     } else if(d.t === 'lobby'){
       // back to the lobby: to change the game, or the music, or wait for somebody
       if(S.phase === 'over' && S.phaseT > 2.5){ G.toLobby(S); Object.values(people).forEach(q => { q.ready = false; }); roomDirty = true; }
@@ -183,7 +186,8 @@ export function createHost(opts){
       best: b.best, bestScore: b.bestScore,
       people: Object.values(people).map(p => {
         const pl = S.players[p.id];
-        return {id: p.id, n: p.name, role: p.role, c: pl ? pl.color : -1, r: p.ready ? 1 : 0, w: p.conn ? 0 : 1};
+        return {id: p.id, n: p.name, role: p.role, c: pl ? pl.color : -1, r: p.ready ? 1 : 0, w: p.conn ? 0 : 1,
+          net: p.conn && p.conn.peer === 'local' ? 'host' : p.net || ''};
       })};
   }
   function info(){ if(opts.onRoom) opts.onRoom(roomInfo()); }

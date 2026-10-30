@@ -42,6 +42,8 @@ ol b { color: #fff; }
 .chip { padding: 0.5vh 0.9vw; border-radius: 30px; border: 2px solid; font-weight: 800; font-size: 1.2vw; background: #ffffff0d; }
 .chip.ready::after { content: ' ✓'; }
 .chip.away { opacity: 0.4; }
+.chip small, .pl .n small { font-weight: 600; font-size: 0.8em; opacity: 0.8; margin-left: 0.4vw; color: #cfe0ff; }
+.netkey { color: var(--dim); font-size: 0.9vw; }
 .hint { color: var(--dim); font-size: 1vw; margin-top: auto; }
 .hint b { color: var(--gold); }
 #status { color: var(--gold); font-size: 1.1vw; }
@@ -120,6 +122,7 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
   </ol>
   <div class="hint" id="modeLine" style="margin-top:0"></div>
   <div class="crew" id="crew"></div>
+  <div class="netkey" id="netKey"></div>
   <div class="hint" id="hint">Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).</div>
   <div class="hint" style="margin-top:0">Just you? Open this page on your phone and tap <b>START A GAME ON THIS PHONE</b> - or <a id="soloLink" href="play.html" style="color:var(--acc)">play on this computer</a> (drag to look, Space to fire).</div>
 </div>
@@ -197,6 +200,7 @@ function watch(code){
   });
 }
 
+const NET_LABEL = {wifi: '📶 Wi-Fi', internet: '🌐 Internet', relay: '☁️ Cloudflare', host: '📱 host'};
 function drawRoom(){
   if(!room) return;
   $('code').textContent = room.code || '····';
@@ -211,9 +215,13 @@ function drawRoom(){
     s.className = 'chip' + (p.r ? ' ready' : '') + (p.w ? ' away' : '');
     s.style.borderColor = s.style.color = COLORS[p.c] || '#fff';
     s.textContent = p.n;
+    if(NET_LABEL[p.net]){ const k = document.createElement('small'); k.textContent = NET_LABEL[p.net]; s.appendChild(k); }
     c.appendChild(s);
   });
   const n = room.people.filter(p => p.role === 'player' && !p.w).length;
+  const ways = room.people.filter(p => p.role === 'player' && NET_LABEL[p.net]);
+  $('netKey').textContent = ways.length ? (ways.every(p => p.net === 'wifi') ? 'Every phone is on this Wi-Fi.' :
+    ways.some(p => p.net === 'relay') ? 'Some phones are going through the Cloudflare relay.' : 'Some phones are reaching this TV over the internet, not this Wi-Fi.') : '';
   switchMode(room.mode === 'zombie' ? 'zombie' : 'space');
   $('modeLine').innerHTML = 'Game: <b>' + (room.mode === 'zombie' ? 'BUNKER 🎃' : 'SPACE 🚀') + '</b> - change it on any phone.';
   $('hint').innerHTML = n ? 'Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).' +
@@ -300,6 +308,8 @@ function board(){
     d.classList.toggle('away', !!p.w);
     const n = d.querySelector('.n');
     n.textContent = p.n; n.style.color = COLORS[p.c];
+    const who = room && room.people.find(q => q.id === p.id);
+    if(who && NET_LABEL[who.net]){ const k = document.createElement('small'); k.textContent = NET_LABEL[who.net].split(' ')[0]; n.appendChild(k); }
     d.querySelector('.s').textContent = p.s.toLocaleString();
     d.querySelector('.kk').textContent = p.k + ' kills';
     const h = d.querySelector('.heat i');

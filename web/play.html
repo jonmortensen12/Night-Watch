@@ -68,6 +68,8 @@ body.drag #fireBtn { display: flex; }
 #toast.on { opacity: 1; }
 #dot { position: fixed; right: 72px; top: calc(56px + env(safe-area-inset-top)); width: 10px; height: 10px; border-radius: 50%; background: #3cff8a; z-index: 6; box-shadow: 0 0 8px #3cff8a; }
 #dot.off { background: #ff4d6a; box-shadow: 0 0 8px #ff4d6a; }
+#netTag { position: fixed; right: 88px; top: calc(51px + env(safe-area-inset-top)); z-index: 6; font: 700 11px system-ui; color: #cfe0ff; text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap; }
+.chip small { font-weight: 600; opacity: 0.75; margin-left: 4px; }
 #note { position: fixed; left: 0; right: 0; top: calc(96px + env(safe-area-inset-top)); z-index: 9; text-align: center; pointer-events: none; }
 #note span { background: #ff4d6add; padding: 6px 12px; border-radius: 10px; font-weight: 700; pointer-events: auto; }
 #vignette { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, #ff0030aa 100%); transition: opacity 0.15s; }
@@ -145,6 +147,7 @@ body.mode-zombie #top { justify-content: space-between; }
 <button id="lockBtn" class="icon" style="display:none">⌖ FRONT</button>
 <button id="musicBtn" class="icon" style="display:none">♪</button>
 <div id="dot" style="display:none"></div>
+<div id="netTag"></div>
 <button id="missileBtn" class="icon" style="display:none"><b id="mCount">3</b>MISSILE</button>
 <button id="fireBtn" class="icon">FIRE</button>
 <div id="banner"></div>
@@ -400,6 +403,7 @@ $('hostBtn').addEventListener('click', () => {
   roomTv = false;
   host = createHost({tv: false, onRoom: r => { room = r; drawRoom(); }});
   localLink = host.local(myName, devId, onHost);
+  $('netTag').textContent = NET_LABEL.host;
   joined = true;
   $('dot').classList.remove('off');
   enterGame();
@@ -419,6 +423,7 @@ function connect(auto){
       c.on('close', dropped);
       c.send({t: 'hello', name: myName, dev: devId, proto: PROTO, role: 'player'});
       $('joinBtn').disabled = false; $('joinMsg').textContent = '';
+      watchRoute(c);
       $('dot').classList.remove('off');
       note('');
       if(!joined){ joined = true; enterGame(); }
@@ -436,9 +441,32 @@ function connect(auto){
     }
   });
 }
+/* How this phone reaches the game: measured once the link settles, and
+   again now and then (a relay can give way to wifi, or the other way). */
+const NET_LABEL = {wifi: '📶 Wi-Fi', internet: '🌐 Internet', relay: '☁️ Cloudflare relay', local: '', host: '📱 hosting'};
+const NET_SAY = {wifi: 'Connected over Wi-Fi', internet: 'Connected over the internet (not the same Wi-Fi)', relay: 'Connected through the Cloudflare relay'};
+let netKind = null, netTimer = null;
+function watchRoute(c){
+  clearTimeout(netTimer);
+  let n = 0;
+  (function check(){
+    if(conn !== c) return;
+    NWNet.route(c, k => {
+      if(k && k !== netKind){
+        netKind = k;
+        $('netTag').textContent = NET_LABEL[k] || '';
+        if(NET_SAY[k]) toast(NET_SAY[k]);
+        tx({t: 'net', k});
+      }
+    });
+    netTimer = setTimeout(check, n++ < 3 ? 1500 : 20000);
+  })();
+}
+
 function later(){
   conn = null;
   $('dot').classList.add('off');
+  $('netTag').textContent = ''; netKind = null;
   releaseAll();
   if(retries > 10){ note('Lost the game. Tap to rejoin.'); return; }
   note('Reconnecting...');
@@ -760,6 +788,7 @@ function drawRoom(){
     s.className = 'chip' + (p.r ? ' ready' : '') + (p.w ? ' away' : '');
     s.style.borderColor = s.style.color = COLORS[p.c] || '#fff';
     s.textContent = p.n;
+    if(NET_LABEL[p.net]){ const k = document.createElement('small'); k.textContent = NET_LABEL[p.net].split(' ')[0]; k.title = NET_LABEL[p.net]; s.appendChild(k); }
     c.appendChild(s);
   });
   const mine = room.people.find(p => p.id === me.id || p.id === devId);

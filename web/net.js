@@ -211,5 +211,31 @@ function join(code, h){
   return handle;
 }
 
-root.NWNet = {host: host, join: join, isLocal: isLocal, codeGen: codeGen, loadPeer: loadPeer};
+/* How a connection actually travels, from WebRTC's own statistics: the
+   pair of candidates it settled on. Either end a relay: through Cloudflare.
+   Both ends addresses on the local network: the same wifi. Otherwise
+   straight across the internet (a phone on mobile data, say). cb(kind):
+   'wifi' | 'internet' | 'relay' | 'local' (no WebRTC: ?local=1, or the
+   hosting phone's own player) | null (not settled yet). */
+function privateAddr(a){
+  return !!a && (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|127\.|f[cd]|fe80|::1)/i.test(a) || /\.local$/i.test(a));
+}
+function route(conn, cb){
+  var pc = conn && conn.peerConnection;
+  if(!pc || typeof pc.getStats !== 'function') return cb('local');
+  pc.getStats().then(function(stats){
+    var byId = {}, pair = null;
+    stats.forEach(function(r){ byId[r.id] = r; });
+    stats.forEach(function(r){ if(r.type === 'transport' && r.selectedCandidatePairId) pair = byId[r.selectedCandidatePairId]; });
+    if(!pair) stats.forEach(function(r){ if(r.type === 'candidate-pair' && (r.selected || (r.nominated && r.state === 'succeeded'))) pair = r; });
+    if(!pair) return cb(null);
+    var l = byId[pair.localCandidateId] || {}, rm = byId[pair.remoteCandidateId] || {};
+    if(l.candidateType === 'relay' || rm.candidateType === 'relay') return cb('relay');
+    var la = l.address || l.ip, ra = rm.address || rm.ip;
+    if(l.candidateType === 'host' && (rm.candidateType === 'host' || privateAddr(ra)) && (privateAddr(la) || !la)) return cb('wifi');
+    cb('internet');
+  }, function(){ cb(null); });
+}
+
+root.NWNet = {host: host, join: join, isLocal: isLocal, codeGen: codeGen, loadPeer: loadPeer, route: route};
 })(window);

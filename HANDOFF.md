@@ -199,12 +199,35 @@ turn it on with ♪. A browser keeps a page silent until somebody touches
 that device: the TV shows "tap this screen for sound" until it has had a
 tap or a key (Mission Control's lesson).
 
+## How each phone is connected
+
+Asked for: "a small notification that tells you how players connected -
+WiFi, or over Cloudflare". Each phone reads WebRTC's own statistics
+(`NWNet.route` in `net.js`: the candidate pair the connection settled on)
+1.5, 3, 4.5 s after joining and every 20 s after, and tells the host
+(`net {k}`) when it changes:
+
+- **📶 Wi-Fi** — both ends are addresses on the local network (`host`
+  candidates, private or `.local` addresses): straight across the wifi.
+- **🌐 Internet** — direct, but across the internet (a phone on mobile
+  data, or a different network).
+- **☁️ Cloudflare relay** — either end is a `relay` candidate: through
+  the TURN relay in `worker.js` (only once its secrets are set).
+- **📱 hosting** — the phone running the room itself.
+
+The phone shows it beside its connection dot and as a toast when it
+changes; the lobbies (TV and phone) show it on each player's chip, the TV
+scoreboard beside each name, and the TV lobby sums it up ("Every phone is
+on this Wi-Fi."). With `?local=1` there is no WebRTC, so nothing is shown.
+Verified headless over real PeerJS (two pages on one machine: Wi-Fi); the
+relay case cannot be tried until the TURN secrets exist.
+
 ## The phone ↔ host protocol (`PROTO` 1)
 
 Phone → host: `hello {name, dev, proto, role: player|watch}`,
 `in {a: [x,y,z], tg, f}` (aim, what the crosshair is on, trigger; every
 50 ms and on change), `msl {tg}`, `ready {v}`, `go` (start now),
-`again`, `theme {key}`, `ping` (a watching TV).
+`again`, `theme {key}`, `ping` (a watching TV), `net {k}` (how it is connected).
 
 Host → phone: `host {proto, min, tv, code}`, `you {id, c}` (your colour),
 and `s` twenty times a second: phase, wave, hull, enemies (ten numbers
