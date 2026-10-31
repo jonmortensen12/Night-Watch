@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000">
+<title>Night Watch - AR tracker test</title>
+<style>
+html, body { margin: 0; height: 100%; background: #000; color: #fff; font: 15px/1.35 system-ui, -apple-system, sans-serif; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+video, canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+video { object-fit: cover; }
+#dots { pointer-events: none; }
+#start { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; background: #05070f; z-index: 5; }
+#start h1 { margin: 0; font-size: 26px; letter-spacing: 0.08em; }
+#start p { color: #9ab; margin: 0; max-width: 420px; }
+button { font: inherit; font-weight: 800; color: #fff; background: linear-gradient(180deg, #2fb8ff, #1272d6); border: 1px solid #6fd4ff; border-radius: 14px; padding: 14px 22px; }
+#bar { position: fixed; left: 0; right: 0; top: 0; padding: calc(8px + env(safe-area-inset-top)) 10px 8px; background: #000a; font: 12px/1.4 ui-monospace, monospace; z-index: 3; white-space: pre-wrap; }
+#tip { position: fixed; left: 0; right: 0; bottom: calc(96px + env(safe-area-inset-bottom)); text-align: center; z-index: 3; font-weight: 700; text-shadow: 0 2px 6px #000; padding: 0 16px; }
+#btns { position: fixed; left: 0; right: 0; bottom: calc(20px + env(safe-area-inset-bottom)); display: flex; gap: 10px; justify-content: center; z-index: 3; }
+.alt { background: #13203acc; border-color: #2c4470; }
+#cross { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; border: 2px solid #fff8; border-radius: 50%; z-index: 2; pointer-events: none; }
+</style>
+<script type="importmap">{"imports": {"three": "./lib/three.module.min.js"}}</script>
+</head>
+<body>
+<video id="vid" playsinline muted></video>
+<canvas id="gl"></canvas>
+<canvas id="dots"></canvas>
+<div id="cross"></div>
+<div id="bar"></div>
+<div id="tip"></div>
+<div id="btns"><button class="alt" id="placeBtn">PLACE PUMPKIN</button><button class="alt" id="resetBtn">RESET</button></div>
+<div id="start">
+  <h1>AR TRACKER TEST</h1>
+  <p>Hold the phone at chest height and look down at the floor in front of you. Then walk slowly round the room, looking at the walls - side to side as well as forward.</p>
+  <p>A pumpkin appears on the floor in front of where you started. If it stays put as you walk round it, the tracker works in your room. Tap PLACE PUMPKIN to put it where you are pointing.</p>
+  <button id="go">START</button>
+  <p id="err" style="color:#ff6a7a"></p>
+</div>
+<script type="module">
+/* A test of web/ar/track.js on a real phone in a real room: the camera,
+   the tracked points, a pumpkin pinned in the room, and the numbers. */
+import * as THREE from 'three';
+import {Tracker} from './ar/track.js';
+
+const $ = id => document.getElementById(id);
+const TW = 240;                                   // the tracker's picture is this wide
+const vid = $('vid');
+let tr = null, TH = 320, running = false;
+
+/* ---------- the sensors (as play.html reads them) ---------- */
+const sensorQ = new THREE.Quaternion(), eul = new THREE.Euler(), q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)), ZEE = new THREE.Vector3(0, 0, 1);
+let haveQ = false;
+addEventListener('deviceorientation', e => {
+  if(e.alpha == null) return;
+  const D = Math.PI / 180, sa = ((screen.orientation && screen.orientation.angle) || window.orientation || 0) * D;
+  eul.set(e.beta * D, e.alpha * D, -e.gamma * D, 'YXZ');
+  sensorQ.setFromEuler(eul).multiply(q1).multiply(q0.setFromAxisAngle(ZEE, -sa));
+  haveQ = true;
+});
+// the accelerometer, gravity taken out, in the phone's own axes; averaged per frame
+const accSum = new THREE.Vector3();
+let accN = 0;
+addEventListener('devicemotion', e => {
+  const a = e.acceleration;
+  if(!a || a.x == null) return;
+  accSum.add(new THREE.Vector3(a.x, a.y, a.z).applyQuaternion(sensorQ));
+  accN++;
+});
+
+/* ---------- the overlay ---------- */
+const renderer = new THREE.WebGLRenderer({canvas: $('gl'), alpha: true, antialias: true});
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(60, 1, 0.05, 100);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(1, 3, 2); scene.add(sun);
+function pumpkin(){
+  const g = new THREE.Group();
+  const geo = new THREE.SphereGeometry(0.22, 24, 16), p = geo.attributes.position;
+  for(let i = 0; i < p.count; i++){ const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(z, x), r = 1 + 0.06 * Math.cos(a * 8); p.setXYZ(i, x * r, y * 0.8, z * r); }
+  geo.computeVertexNormals();
+  const body = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color: 0xe0701a, roughness: 0.6}));
+  body.position.y = 0.18; g.add(body);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, 0.1, 6), new THREE.MeshStandardMaterial({color: 0x3a5a1e}));
+  stem.position.y = 0.38; g.add(stem);
+  // a ring on the floor round it, to see whether it slides
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.34, 48), new THREE.MeshBasicMaterial({color: 0x4dd0ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide}));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.005; g.add(ring);
+  return g;
+}
+const pk = pumpkin();
+pk.visible = false;
+scene.add(pk);
+let placed = false;
+
+const dots = $('dots'), dg = dots.getContext('2d');
+function resize(){
+  renderer.setSize(innerWidth, innerHeight, false);
+  dots.width = innerWidth; dots.height = innerHeight;
+}
+addEventListener('resize', resize); resize();
+
+/* The tracker sees the whole video frame scaled to TW wide; the screen
+   shows the video covering it (cropped). Both the overlay camera and the
+   dots have to agree with what is on the screen. */
+function view(){
+  const vw = vid.videoWidth, vh = vid.videoHeight, W = innerWidth, H = innerHeight;
+  const s = Math.max(W / vw, H / vh);            // screen pixels per video pixel
+  const fVid = tr.f * vw / TW;                    // focal length in video pixels
+  return {s, fScreen: fVid * s, ox: (W - vw * s) / 2, oy: (H - vh * s) / 2, k: vw / TW};
+}
+
+/* ---------- start ---------- */
+$('go').addEventListener('click', async () => {
+  try {
+    if(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      const r = await DeviceOrientationEvent.requestPermission().catch(() => 'denied');
+      if(r !== 'granted') $('err').textContent = 'Motion permission: ' + r + ' (trying anyway)';
+    }
+    if(window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') await DeviceMotionEvent.requestPermission().catch(() => {});
+    const stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: {ideal: 'environment'}, width: {ideal: 640}, height: {ideal: 480}}});
+    vid.srcObject = stream;
+    await vid.play();
+  } catch(e){ $('err').textContent = (e && e.message) || String(e); return; }
+  $('start').style.display = 'none';
+  begin();
+});
+
+const work = document.createElement('canvas');
+const wg = work.getContext('2d', {willReadFrequently: true});
+let gray = null, lastT = 0, fps = 0, ms = 0;
+
+function begin(){
+  TH = Math.round(TW * vid.videoHeight / vid.videoWidth);
+  work.width = TW; work.height = TH;
+  gray = new Uint8Array(TW * TH);
+  // a first guess at the lens: about 65 degrees across the long side
+  const f = (Math.max(TW, TH) / 2) / Math.tan(32.5 * Math.PI / 180);
+  tr = new Tracker({width: TW, height: TH, focal: f, eye: 1.35});
+  running = true;
+  lastT = performance.now();
+  if(vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(onFrame); else requestAnimationFrame(onFrame);
+}
+
+function onFrame(){
+  if(!running) return;
+  if(vid.requestVideoFrameCallback) vid.requestVideoFrameCallback(onFrame); else requestAnimationFrame(onFrame);
+  const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
+  lastT = now;
+  fps = fps * 0.9 + (1 / Math.max(dt, 1e-3)) * 0.1;
+  if(!haveQ) { $('tip').textContent = 'No motion sensors yet...'; return; }
+  wg.drawImage(vid, 0, 0, TW, TH);
+  const px = wg.getImageData(0, 0, TW, TH).data;
+  for(let i = 0, k = 0; i < gray.length; i++, k += 4) gray[i] = (px[k] * 77 + px[k + 1] * 150 + px[k + 2] * 29) >> 8;
+  const acc = accN ? [accSum.x / accN, accSum.y / accN, accSum.z / accN] : null;
+  accSum.set(0, 0, 0); accN = 0;
+  const t0 = performance.now();
+  const r = tr.update(gray, [sensorQ.x, sensorQ.y, sensorQ.z, sensorQ.w], dt, acc);
+  ms = ms * 0.9 + (performance.now() - t0) * 0.1;
+  draw(r);
+}
+
+const M = new THREE.Matrix4();
+function draw(r){
+  const v = view(), W = innerWidth, H = innerHeight;
+  // the overlay camera: where the tracker says, turned as it says, with the screen's view
+  const R = tr.rotation();
+  M.set(R[0], R[1], R[2], 0, R[3], R[4], R[5], 0, R[6], R[7], R[8], 0, 0, 0, 0, 1);
+  cam.quaternion.setFromRotationMatrix(M);
+  cam.position.set(r.pos[0], r.pos[1], r.pos[2]);
+  cam.fov = 2 * Math.atan(H / 2 / v.fScreen) * 180 / Math.PI;
+  cam.aspect = W / H;
+  // the video's centre may be off the screen's centre after cropping
+  cam.updateProjectionMatrix();
+  if(!placed && r.state === 'track' && r.landmarks > 25){
+    // two metres in front of where the phone was facing, on the floor
+    const f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion); f.y = 0; f.normalize();
+    pk.position.set(r.pos[0] + f.x * 2, 0, r.pos[2] + f.z * 2);
+    pk.visible = placed = true;
+  }
+  renderer.render(scene, cam);
+  // the tracked points
+  dg.clearRect(0, 0, W, H);
+  dg.fillStyle = r.state === 'track' ? '#4dff88' : '#ffcc44';
+  for(const [u, vv] of tr.points()){ dg.beginPath(); dg.arc(v.ox + u * v.k * v.s, v.oy + vv * v.k * v.s, 3, 0, 6.3); dg.fill(); }
+  $('bar').textContent = `${r.state.toUpperCase()}  points ${r.landmarks}  agreeing ${r.inliers}\n` +
+    `at ${r.pos.map(x => (x * 100).toFixed(0)).join(', ')} cm   ${fps.toFixed(0)} fps, tracker ${ms.toFixed(0)} ms\n` +
+    `lens ${tr.f.toFixed(0)} px   sensor timing ${(tr.lag * 1000).toFixed(0)} ms   picture ${TW}x${TH}`;
+  $('tip').textContent = r.state === 'start' ? 'Look down at the floor in front of you' :
+    r.state === 'lost' ? 'Lost - point at something with detail, slow down' :
+    !placed ? 'Walk slowly, looking round...' : '';
+}
+
+$('placeBtn').addEventListener('click', () => {
+  if(!tr) return;
+  const p = tr.pointAt(tr.w / 2, tr.h / 2);
+  if(p){ pk.position.set(p[0], Math.max(0, p[1] - 0.2), p[2]); pk.visible = placed = true; }
+  else $('tip').textContent = 'Nothing tracked there yet - point at somewhere with green dots';
+});
+$('resetBtn').addEventListener('click', () => { if(tr){ tr.reset(); placed = false; pk.visible = false; } });
+</script>
+</body>
+</html>

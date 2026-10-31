@@ -377,6 +377,73 @@ from Chromium's DevTools protocol, walking and firing at once (with
 `NW_TEST.sensors()` standing in for motion sensors). The sniper's button
 reads "✕ UNZOOM" while the scope is up.
 
+## AR Bunker (in progress): our own camera tracker
+
+Asked for: monsters anchored in the real room so they do not slide as you
+walk, the map shared between phones, no TV and no printed marker, and no
+third-party tracking code ("let's write it ourselves"), one phone first.
+Nothing of it is in the game yet; the tracker and a test page are.
+
+**`web/ar/track.js`** - the tracker, all our own code. The idea that makes
+it small: the motion sensors already give the phone's rotation, so the
+camera only has to give its position.
+- FAST corners, remembered as raw 17x17 snapshots (and half-size), so a
+  template can be made at any scale: walking up to something makes it
+  bigger, and matching an old small patch makes it slip.
+- Each frame every landmark that should be on screen is looked for near
+  where the sensor rotation and the predicted position put it (normalised
+  cross-correlation, coarse then fine, sub-pixel), with a uniqueness test:
+  on a repeating pattern (floorboards) the runner-up is nearly as good and
+  the match is thrown away.
+- Position: RANSAC on pairs of rays (two landmarks fix the position when
+  the rotation is known), then Gauss-Newton on reprojection error over
+  position, a small rotation correction and the focal length.
+- **The floor gives the scale.** The phone is held at chest height
+  (`eye`, 1.35 m) and gravity says which way is down, so a corner seen
+  steeply below the horizon is put on the floor at once, in metres. These
+  are on probation until the phone has moved: a real floor point turns up
+  where the floor says; a table top does not, and becomes an ordinary
+  corner.
+- Other corners are followed until seen from far enough apart (4 degrees,
+  22 cm), and all the sightings must agree, before becoming landmarks.
+- **Bundle adjustment:** a sliding window of ten keyframes (every 15 cm,
+  12 degrees or second); their positions and every landmark they saw are
+  adjusted together. Rotations come from the sensors, so it is three
+  numbers a camera and three a landmark, the cameras' system reduced with
+  the Schur complement. Floor landmarks are pulled gently to y = 0.
+- Learnt as it goes: the sensors' steady rotation error (while still),
+  their timing relative to the camera (while turning), the lens.
+- Lost (nothing agrees): hold still; look for landmarks by appearance alone
+  (relocate); after 0.6 s carry on with new landmarks from where it is, and
+  every 20 frames try to snap back on to old landmarks (reanchor).
+- The accelerometer, if given (world frame, gravity out), carries the
+  position between frames.
+
+**`trackcheck.mjs`** - the tracker against the truth: a pretend living room
+(`web/ar/fakeroom.js`) drawn in headless Chromium, walked through with
+sensors that are late, noisy and drifting and a lens 8% misjudged. Two
+walks: the game's (stand, scan by turning while stepping in a small circle,
+walk to the front window, to the left window, back) and a hard one (brisk,
+looking all over). `IDEAL=1`, `WALK=game`, `AUDIT=1` (each landmark checked
+against the real room surface), `DBG=1 T0= T1=`, `VERBOSE=1`, `SHOT=1`.
+
+**Where it stands (honestly):** standing, scanning and walking to the first
+window track to within roughly 10 to 50 cm in the pretend room; longer walks
+drift by a metre or more and do not always snap back; with the sensors'
+timing off by 50 ms it is worse. `trackcheck` does not pass all its bounds
+yet - it is a progress report, not a gate. Runs are repeatable (seeded).
+
+**`web/artest.html`** - try it on a phone: the camera, the tracked points as
+dots, a pumpkin pinned on the floor two metres ahead (or where you tap
+PLACE), and the numbers (state, landmarks, position, frame rate, tracker
+time, learnt sensor timing and lens). Not linked from the game. The real
+room will say more than the pretend one: lighting, blur, real sensors.
+
+Next, once the phone test says it is good enough: AR Bunker itself (tag
+real windows and doors as barricades, boards on them, the camera image
+darkening wave by wave, the roof torn open for the witch), then sharing the
+map between phones.
+
 ## Not built yet / to check
 
 - **Never run on a real phone.** Everything is verified headless (software

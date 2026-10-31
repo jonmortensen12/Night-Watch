@@ -27,6 +27,10 @@ node tools/art.mjs   # redraw the icons and link preview after changing how ship
 python3 tools/samples.py && python3 tools/music.py   # re-render web/music/ after changing a piece
 ```
 
+`node trackcheck.mjs` tests the AR camera tracker (`web/ar/track.js`) in a
+pretend room. It is a progress report while AR Bunker is being built, not a
+gate - see HANDOFF.md.
+
 `web/sim.js` (space) and `web/zsim.js` (the bunker) decide everything that
 happens and draw nothing. Change the
 difficulty there and `simcheck` says whether the waves still last a

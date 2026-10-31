@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>trackcheck</title>
+<canvas id="c" width="240" height="320"></canvas>
+<script type="importmap">{"imports": {"three": "/web/lib/three.module.min.js"}}</script>
+<script type="module">
+/* The tracker against the truth, in a pretend room (see trackcheck.mjs). */
+import * as THREE from 'three';
+import {Tracker} from '/web/ar/track.js';
+import {buildRoom, walk as hardWalk, WALK_TIME, gameWalk, GAME_TIME} from '/web/ar/fakeroom.js';
+
+const W = 240, H = 320, F = 240;                    // portrait, about a phone camera's field of view
+const params = new URLSearchParams(location.search);
+const LAT = +(params.get('lat') || 0.05);           // sensor lag behind the camera, seconds
+const NOISE = +(params.get('noise') || 0.004);       // radians of sensor jitter
+const DRIFT = +(params.get('drift') || 0.006);       // radians a second of slow sensor drift
+const FGUESS = +(params.get('fguess') || 1.08);      // how wrong the focal-length guess is
+const GAME = params.get('walk') === 'game';
+const ACC = +(params.get('acc') ?? 0.15);            // accelerometer noise, m/s^2 (negative: none)
+const walk = GAME ? gameWalk : hardWalk, TOTAL = GAME ? GAME_TIME : WALK_TIME;
+
+const renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), preserveDrawingBuffer: true});
+renderer.setSize(W, H, false);
+const scene = buildRoom(THREE);
+const cam = new THREE.PerspectiveCamera(2 * Math.atan(H / 2 / F) * 180 / Math.PI, W / H, 0.05, 50);
+cam.rotation.order = 'YXZ';
+const rt = new THREE.WebGLRenderTarget(W, H);
+const px = new Uint8Array(W * H * 4), gray = new Uint8Array(W * H);
+const tr = new Tracker({width: W, height: H, focal: F * FGUESS, eye: 1.35});
+if(params.get('nolearn')) tr.noLearn = true;
+
+let s = 7;
+const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff) - 0.5;
+const qOf = (yaw, pitch, roll) => new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, roll || 0, 'YXZ'));
+
+window.run = async () => {
+  const dt = 1 / 30, out = [];
+  let drift = [0, 0, 0];
+  let ms = 0, initFrame = -1, truth0 = null;
+  const log = [];
+  const truths = [];
+  for(let i = 0; i * dt < TOTAL; i++){
+    const t = i * dt, P = walk(t);
+    cam.position.set(...P.p);
+    cam.quaternion.copy(qOf(P.yaw, P.pitch, Math.sin(t * 1.7) * 0.05));
+    renderer.setRenderTarget(null); renderer.render(scene, cam);
+    renderer.setRenderTarget(rt); renderer.render(scene, cam);
+    renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
+    // render targets come out bottom row first
+    for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){
+      const k = ((H - 1 - y) * W + x) * 4;
+      gray[y * W + x] = (px[k] * 77 + px[k + 1] * 150 + px[k + 2] * 29) >> 8;
+    }
+    // what the sensors say: a moment late, a little noisy, slowly drifting
+    drift = drift.map(v => v + rnd() * DRIFT * dt * 6);
+    const L = walk(Math.max(0, t - LAT));
+    const qs = qOf(L.yaw + drift[1] + rnd() * NOISE, L.pitch + drift[0] + rnd() * NOISE, Math.sin(Math.max(0, t - LAT) * 1.7) * 0.05 + drift[2]);
+    // what the accelerometer says: the true acceleration over this frame, plus noise
+    let acc = null;
+    if(ACC >= 0 && t > dt){
+      const a0 = walk(t - dt).p, a1 = P.p, a2 = walk(t + dt).p;
+      acc = [0, 1, 2].map(k => (a2[k] - 2 * a1[k] + a0[k]) / (dt * dt) + rnd() * ACC * 2);
+    }
+    const t0 = performance.now();
+    const r = tr.update(gray, [qs.x, qs.y, qs.z, qs.w], dt, acc);
+    ms += performance.now() - t0;
+    truths.push(P.p);
+    if(initFrame < 0) initFrame = 1;
+    out.push({t, state: r.state, metric: r.metric, pos: r.pos, truth: P.p, lms: r.landmarks, inl: r.inliers});
+    if(params.get('dbg') && t > +(params.get('t0') || 7) && t < +(params.get('t1') || 10.5) && i % 3 === 0){
+      const tp = truths[0];
+      log.push(`  ${t.toFixed(2)} ${r.state} tracked ${tr.last.tracked} inl ${r.inliers} est ${r.pos.map(v => v.toFixed(2))} true ${[P.p[0] - tp[0], P.p[1], P.p[2] - tp[2]].map(v => v.toFixed(2))} floor-lms ${tr.lms.filter(l => l.floor).length} vis ${tr.lms.filter(l => l.vis).length} prob ${tr.lms.filter(l => l.vis && l.prob).length} cands ${tr.cands.length} lms ${tr.lms.length}`);
+    }
+    if(params.get('audit') && i % 30 === 0 && i > 0){
+      // the truth about the map: from the true camera, through each matched pixel, to the room's surface
+      const rc = new THREE.Raycaster(), stats = {floor: [], tri: []}, depthErr = {floor: [], tri: []};
+      cam.updateMatrixWorld();
+      for(const lm of tr.lms){
+        if(!lm.vis || lm.miss) continue;
+        rc.setFromCamera(new THREE.Vector2(((lm.u + 0.5) / W) * 2 - 1, -(((lm.v + 0.5) / H) * 2 - 1)), cam);
+        const hit = rc.intersectObjects(scene.children, false)[0];
+        if(!hit) continue;
+        const e = hit.point.distanceTo(new THREE.Vector3(lm.X[0] + truths[0][0], lm.X[1], lm.X[2] + truths[0][2]));
+        (lm.floor ? stats.floor : stats.tri).push(e);
+      }
+      const med = a => a.length ? a.slice().sort((x, y) => x - y)[a.length >> 1].toFixed(2) : '-';
+      const bad = a => a.filter(x => x > 0.15).length + '/' + a.length;
+      log.push(`  AUDIT ${t.toFixed(1)}s floor-guess err med ${med(stats.floor)} m bad ${bad(stats.floor)} | triangulated err med ${med(stats.tri)} m bad ${bad(stats.tri)} | cam err ${Math.hypot(r.pos[0] - (P.p[0] - truths[0][0]), r.pos[1] - P.p[1], r.pos[2] - (P.p[2] - truths[0][2])).toFixed(2)}`);
+    }
+    if(i % 15 === 0) log.push(`${t.toFixed(1)}s ${r.state} lms ${r.landmarks} tracked ${tr.last.tracked} inl ${r.inliers} cands ${tr.cands.length} pos ${r.pos.map(v => v.toFixed(2)).join(',')} f ${tr.f.toFixed(0)}`);
+    if(i === 40){
+      window.frame40 = document.getElementById('c').toDataURL();
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const g = cv.getContext('2d'), id = g.createImageData(W, H);
+      for(let k = 0; k < W * H; k++){ id.data[k * 4] = id.data[k * 4 + 1] = id.data[k * 4 + 2] = gray[k]; id.data[k * 4 + 3] = 255; }
+      g.putImageData(id, 0, 0);
+      window.gray40 = cv.toDataURL();
+    }
+  }
+  // compare, in metres, once the tracker has its scale
+  const t0p = truths[initFrame - 1] || truths[0];
+  let se = 0, n = 0, maxE = 0, tracked = 0, metricAt = null;
+  const rows = [];
+  for(const o of out){
+    if(o.state === 'track') tracked++;
+    if(!o.metric) continue;
+    if(metricAt == null) metricAt = o.t;
+    const ex = o.pos[0] - (o.truth[0] - t0p[0]), ey = o.pos[1] - o.truth[1], ez = o.pos[2] - (o.truth[2] - t0p[2]);
+    const e = Math.hypot(ex, ey, ez);
+    se += e * e; n++; maxE = Math.max(maxE, e);
+    if(Math.round(o.t * 30) % 30 === 0) rows.push(`${o.t.toFixed(0).padStart(3)}s ${o.state.padEnd(5)} err ${(e * 100).toFixed(0).padStart(3)} cm  lms ${o.lms} inl ${o.inl}`);
+  }
+  // the worst error in each part of the walk
+  const phase = (a, b) => { let m = 0; for(const o of out) if(o.t >= a && o.t < b){ const e = Math.hypot(o.pos[0] - (o.truth[0] - t0p[0]), o.pos[1] - o.truth[1], o.pos[2] - (o.truth[2] - t0p[2])); m = Math.max(m, e); } return m; };
+  const phases = GAME ? {scan: phase(0, 9), toWindow: phase(9, 16), toSecond: phase(16, 21), back: phase(21, 26)} : {};
+  return {phases, frames: out.length, tracked, metricAt, rmse: n ? Math.sqrt(se / n) : null, maxE, msPerFrame: ms / out.length,
+    focal: tr.f, focalTrue: F, rows, log};
+};
+window.ready = true;
+</script>
