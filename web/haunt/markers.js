@@ -49,18 +49,73 @@ export function cells(id){
 }
 
 /* Draw one onto a 2D canvas (black on whatever is there - draw it on white). */
-export function drawMarker(g, id, x, y, size){
-  const c = cells(id), s = size / 6;
+/* Printing them without emptying the cartridge. The black square is most
+   of a page of solid black, so two lighter styles: inside a solid frame
+   round the outside, the black is hatched with diagonal lines (a little
+   under half ink). From more than an arm's length the camera sees the
+   hatching as a dark grey, which is all the cells need: they are read
+   against each other, not against pure black. The frame keeps the square's
+   edge sharp, and that edge is what gives the distance. Millimetres, for a
+   160 mm square. In a synthetic test (blur, noise, dim light, at angles)
+   all three are found as often out to 3.5 m; past that solid does a little
+   better. Position errors, median, as a share of the distance:
+     solid    79% ink   0.2-0.5%
+     hatch    52% ink   0.3% to 2.5 m, ~1% to 3.5 m   (the default)
+     light    41% ink   ~2-3% (the thin frame lets the grey soften the edge) */
+export const STYLES = {
+  solid: {name: 'Solid', frame: 80},
+  hatch: {name: 'Ink saver', frame: 12, pitch: 2.2, line: 1.0},
+  light: {name: 'Lightest', frame: 3, pitch: 2.2, line: 1.0},
+};
+const styleOf = st => STYLES[st] || STYLES.solid;
+
+/* Draw one onto a 2D canvas (draw it on white). */
+export function drawMarker(g, id, x, y, size, style){
+  const c = cells(id), s = size / 6, H = styleOf(style);
   g.fillStyle = '#000';
-  for(let j = 0; j < 6; j++) for(let i = 0; i < 6; i++)
-    if(c[j][i]) g.fillRect(x + i * s - 0.25, y + j * s - 0.25, s + 0.5, s + 0.5);
+  if(!H.pitch){
+    for(let j = 0; j < 6; j++) for(let i = 0; i < 6; i++)
+      if(c[j][i]) g.fillRect(x + i * s - 0.25, y + j * s - 0.25, s + 0.5, s + 0.5);
+    return;
+  }
+  const mm = size / 160;
+  g.save();
+  g.beginPath();
+  for(let j = 0; j < 6; j++) for(let i = 0; i < 6; i++) if(c[j][i]) g.rect(x + i * s - 0.25, y + j * s - 0.25, s + 0.5, s + 0.5);
+  g.clip();
+  g.strokeStyle = '#000'; g.lineWidth = H.line * mm;
+  g.beginPath();
+  // the pitch is measured across the lines
+  for(let t = -size; t < size * 2; t += H.pitch * mm * Math.SQRT2){ g.moveTo(x + t, y); g.lineTo(x + t - size, y + size); }
+  g.stroke();
+  g.restore();
+  const f = H.frame * mm;
+  g.fillRect(x, y, size, f); g.fillRect(x, y + size - f, size, f);
+  g.fillRect(x, y, f, size); g.fillRect(x + size - f, y, f, size);
 }
 /* The same as SVG, for the print page: crisp at any printer resolution. */
-export function markerSVG(id){
-  const c = cells(id);
+export function markerSVG(id, style){
+  const c = cells(id), H = styleOf(style);
   let p = '';
   for(let j = 0; j < 6; j++) for(let i = 0; i < 6; i++) if(c[j][i]) p += `M${i} ${j}h1v1h-1z`;
-  return `<svg viewBox="0 0 6 6" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><path d="${p}" fill="#000"/></svg>`;
+  if(!H.pitch)
+    return `<svg viewBox="0 0 6 6" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><path d="${p}" fill="#000"/></svg>`;
+  const k = 6 / 160, F = H.frame * k, P = H.pitch * k * Math.SQRT2, L = H.line * k;
+  let lines = '';
+  for(let t = -6; t < 12; t += P) lines += `M${t.toFixed(4)} 0L${(t - 6).toFixed(4)} 6`;
+  return `<svg viewBox="0 0 6 6" xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="m${id}"><path d="${p}"/></clipPath></defs>` +
+    `<path d="${lines}" stroke="#000" stroke-width="${L.toFixed(4)}" fill="none" clip-path="url(#m${id})"/>` +
+    `<path d="M0 0h6v6h-6zM${F} ${F}v${6 - 2 * F}h${6 - 2 * F}v${-(6 - 2 * F)}z" fill="#000" fill-rule="evenodd"/></svg>`;
+}
+/* How much of the square is ink, 0..1. */
+export function inkOf(id, style){
+  const c = cells(id), H = styleOf(style);
+  let black = 0;
+  for(let j = 0; j < 6; j++) for(let i = 0; i < 6; i++) black += c[j][i];
+  const solid = black / 36;
+  if(!H.pitch) return solid;
+  const fr = H.frame / 160, frame = 1 - (1 - 2 * fr) ** 2;
+  return frame + (solid - frame) * Math.min(1, H.line / H.pitch);
 }
 
 /* ================= finding them ================= */
@@ -180,7 +235,9 @@ export class Detector {
     let ha = 0;
     for(let i = 0; i < hull.length; i++){ const p = hull[i], r = hull[(i + 1) % hull.length]; ha += p[0] * r[1] - r[0] * p[1]; }
     ha = Math.abs(ha) / 2;
-    if(ha > qa * 1.12 || qa < 60) return null;
+    // a small square's corners are rounded off by blur, so its outline
+    // overshoots the four corners more
+    if(ha > qa * (1.1 + 3 / Math.sqrt(qa)) || qa < 60) return null;
     let mn = Infinity, mx = 0;
     for(let i = 0; i < 4; i++){
       const p = q[i], r = q[(i + 1) % 4], l = Math.hypot(r[0] - p[0], r[1] - p[1]);
@@ -247,8 +304,10 @@ export class Detector {
       const at = (u, v) => { const z = H[6] * u + H[7] * v + H[8]; return [(H[0] * u + H[1] * v + H[2]) / z, (H[3] * u + H[4] * v + H[5]) / z]; };
       const cell = (i, j) => {
         let s = 0;
-        for(const a of [-0.18, 0, 0.18]) for(const b of [-0.18, 0, 0.18]){ const p = at((i + 0.5 + a) / 6, (j + 0.5 + b) / 6); s += bilin(gray, w, h, p[0], p[1]); }
-        return s / 9;
+        // sixteen points across the middle of the cell: hatching, seen
+        // close, averages out
+        for(const a of [-0.3, -0.1, 0.1, 0.3]) for(const b of [-0.3, -0.1, 0.1, 0.3]){ const p = at((i + 0.5 + a) / 6, (j + 0.5 + b) / 6); s += bilin(gray, w, h, p[0], p[1]); }
+        return s / 16;
       };
       if(k === 0){
         // light and dark levels: the border, and the paper just outside it
@@ -263,19 +322,32 @@ export class Detector {
         }
         dk /= nd; lt /= nl;
         if(lt - dk < 22) return null;
-        this._thr = (dk + lt) / 2; this._lt = lt; this._dk = dk;
+        // Black and white for the bits come from the bits themselves - every
+        // marker has some of each - split where they divide best. (The
+        // border is no guide to them: an ink-saver marker's border has a
+        // solid frame, its bits are only hatched, and blur mixes the two.)
+        const inner = [];
+        for(let j = 1; j < 5; j++) for(let i = 1; i < 5; i++) inner.push(vals[j * 6 + i]);
+        const so = inner.slice().sort((a, b) => a - b);
+        let best = -1, cut = 0;
+        for(let n = 4; n <= 12; n++){
+          const m0 = so.slice(0, n).reduce((a, x) => a + x, 0) / n, m1 = so.slice(n).reduce((a, x) => a + x, 0) / (16 - n);
+          const score = n * (16 - n) * (m1 - m0) ** 2;
+          if(score > best){ best = score; cut = n; this._m0 = m0; this._m1 = m1; }
+        }
+        const span = this._m1 - this._m0;
+        this._thr = (this._m0 + this._m1) / 2;
+        // the white bits are paper, the black ones well down towards the border
+        if(span < 12 || span < (lt - dk) * 0.3 || this._m1 < dk + (lt - dk) * 0.55) return null;
         let bad = 0;
         for(let j = 0; j < 6; j++) for(let i = 0; i < 6; i++) if((i === 0 || j === 0 || i === 5 || j === 5) && vals[j * 6 + i] > this._thr) bad++;
         if(bad > 2) return null;
+        // every bit clearly one or the other (a picture on the wall is mostly neither)
+        for(const x of inner) if(Math.abs(x - this._thr) < span * 0.2) return null;
       }
-      // the inner bits, read with this corner as the top left; every one
-      // clearly black or white (a picture on the wall is mostly neither)
+      // the inner bits, read with this corner as the top left
       let code = 0;
       const v = this._vals;
-      if(k === 0){
-        const span = this._lt - this._dk;
-        for(let j = 1; j < 5; j++) for(let i = 1; i < 5; i++) if(Math.abs(v[j * 6 + i] - this._thr) < span * 0.17) return null;
-      }
       for(let j = 1; j < 5; j++) for(let i = 1; i < 5; i++){
         // cell (i, j) seen from corner k is cell rot^-k of the k=0 reading
         let ii = i, jj = j;

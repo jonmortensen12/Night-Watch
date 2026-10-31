@@ -498,7 +498,18 @@ browser, `#CODE` reprints it), a cover sheet with the join QR code
 (`/haunt/#CODE`) and the rules, then one marker per sheet: 0-11 singles,
 12-17 three pairs (A, B, C: left and right edges of a wide opening). The
 black square prints at exactly 16 cm (a 10 cm line on the cover checks the
-printer's scaling). Everybody scans the cover. Once per room, somebody taps
+printer's scaling). **Ink:** three styles (`STYLES` in `markers.js`), picked
+on the print page. The default, Ink saver, prints the black as diagonal
+hatching (2.2 mm apart, 1 mm lines) inside a 12 mm solid frame: 51% of the
+square is ink against 79% solid, about a third less. Lightest has a 3 mm
+frame (40%, about half). From more than an arm's length the camera sees
+hatching as dark grey, which is all the cells need; the solid frame keeps
+the outer edge, which gives the distance, sharp. In a synthetic test
+(blur, noise, dim light, at angles, 1.5-4.5 m) all three are found about
+equally often; median position error is 0.2-0.5% of the distance for solid,
+0.3% (to 2.5 m) to ~1% (3.5 m) for Ink saver, 2-3% for Lightest (a thin
+frame lets the grey soften the edge). The pretend room in `hauntcheck` uses
+Ink saver markers. Everybody scans the cover. Once per room, somebody taps
 SET UP THE ROOM, stands in the middle and turns slowly round pointing at
 every marker; the plan is kept (per set, on every phone) until it is set up
 again. Then READY. Shoot from anywhere; to repair a hole you walk over to
@@ -520,8 +531,13 @@ picked so any two differ in at least five bits however either is turned
 another marker). Found by an adaptive threshold (integral image), dark
 blobs, each blob's convex hull cut down to four corners, the edges pulled
 onto the exact light-dark step (sub-pixel, line fits), then the cells read
-through the homography - every inner cell has to be clearly black or white,
-or a picture on the wall would now and then read as a marker. About 5-10 ms
+through the homography (16 points a cell, so hatching seen close averages
+out). Black and white for the bits are split from the bits themselves (they
+always have some of each), not from the border, which on an ink-saver
+marker is darker than its hatched bits. Every bit has to be clearly one or
+the other, or a picture on the wall would now and then read as a marker. A
+blob's outline may overshoot its four corners by more when it is small
+(blur rounds them off): that rule was what lost markers beyond ~3 m. About 5-10 ms
 a frame at 640 px on a laptop; a phone that takes over 14 ms looks every
 other frame. Pose: homography, then Levenberg-Marquardt on the corners'
 reprojection, from both of the two answers a flat square allows; `amb` says
@@ -559,7 +575,9 @@ better, from two markers in view at once (the line between them). Then the
 position: each marker's known place minus (yaw x sensor rotation x its
 offset from the camera) - only the marker's centre and distance, which are
 solid, and the sensors' rotation, which is smooth. A leap of over 1.5 m is
-believed only after four agreeing sightings. Between sightings the phone
+believed only after four agreeing sightings; otherwise the position glides
+to each new fix over about 0.1 s (by time, not frames - per-frame smoothing
+crept for seconds when frames were slow). Between sightings the phone
 stays where it was last seen to be; the view still turns freely with the
 sensors. "Point the camera at a marker" shows until the first fix, and
 "Lost track" after 8 s without one mid-game.
@@ -612,10 +630,12 @@ their colours and scores (same device ids).
 
 **`hauntcheck.mjs`**: the print page reads back; first phone in hosts; the
 survey finds every marker (wall/floor right), makes the four portals at the
-right places (17 cm worst between markers), heights (1-2 cm), facing and
+right places (4-7 cm worst between markers), heights (0-1 cm), facing and
 widths, and the focal length (1%); a phone that walked away knows where it
-is (~10 cm); a second phone with its sensors turned 1.7 rad differently
-finds the room's yaw (~1-4°) and itself (~25 cm, uncalibrated lens); a game
+is (~4 cm); a second phone with its sensors turned 1.7 rad differently
+finds the room's yaw (under 1°) and itself (~30 cm: its lens guess is 8%
+out on purpose, the case for a phone that has not learnt its camera yet);
+each print style reads back from the printed page, close and small; a game
 plays (monsters come through the holes, both phones shoot them through the
 pretend camera); standing at a hole offers REPAIR and it works; full
 immersion draws the room; the host's tab closes and the second phone takes

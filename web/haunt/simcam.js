@@ -23,14 +23,14 @@ export const SIM_MARKERS = [
   {id: 13, p: [0.6, 1.05, 2.99], face: 'back'},
 ];
 
-function paper(THREE, id){
+function paper(THREE, id, style){
   // a sheet of A4 at 2 px a millimetre, the marker 16 cm, an arrow above
   const c = document.createElement('canvas');
   c.width = 420; c.height = 594;
   const g = c.getContext('2d');
   g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, c.width, c.height);
   const s = SIZE * 2000, x = (c.width - s) / 2, y = 150;
-  drawMarker(g, id, x, y, s);
+  drawMarker(g, id, x, y, s, style);
   g.strokeStyle = '#bbb'; g.lineWidth = 2;
   g.beginPath(); g.moveTo(210, 60); g.lineTo(240, 95); g.lineTo(222, 95); g.lineTo(222, 120); g.lineTo(198, 120); g.lineTo(198, 95); g.lineTo(180, 95); g.closePath(); g.stroke();
   g.fillStyle = '#222'; g.font = '900 40px system-ui'; g.textAlign = 'center'; g.fillText(String(id + 1), 210, 48);
@@ -52,7 +52,7 @@ export function createSimCam(opts){
   renderer.setSize(W, H, false);
   const scene = buildRoom(THREE, {plain: true});
   for(const m of SIM_MARKERS){
-    const mesh = paper(THREE, m.id);
+    const mesh = paper(THREE, m.id, opts.style || 'hatch');
     mesh.position.set(...m.p);
     if(m.floor){ mesh.rotation.order = 'YXZ'; mesh.rotation.set(-Math.PI / 2, -Math.PI / 2, 0); }
     else mesh.rotation.y = {front: 0, left: Math.PI / 2, right: -Math.PI / 2, back: Math.PI}[m.face];

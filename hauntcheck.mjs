@@ -69,21 +69,31 @@ console.log('the print page');
   ok(/\/haunt\/#TESTHH$/.test(await p.evaluate(() => NW_PRINT.url())), 'its QR code goes to the game with the code');
   const sheets = await p.$$('.sheet');
   ok(sheets.length === 1 + 8 + 2, `cover, eight markers and a pair (${sheets.length} sheets)`);
-  // a printed marker, photographed (well, screenshotted) and read back
-  const png = await sheets[4].screenshot();
-  const got = await p.evaluate(async b64 => {
-    const {Detector} = await import('./markers.js');
-    const img = new Image();
-    img.src = 'data:image/png;base64,' + b64;
-    await img.decode();
-    const w = Math.round(img.width / 2), h = Math.round(img.height / 2);
-    const c = document.createElement('canvas'); c.width = w; c.height = h;
-    const g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h);
-    const d = g.getImageData(0, 0, w, h).data, gray = new Uint8Array(w * h);
-    for(let i = 0; i < w * h; i++) gray[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) >> 8;
-    return new Detector(w, h).detect(gray).map(m => m.id);
-  }, png.toString('base64'));
-  ok(got.length === 1 && got[0] === 3, `the fourth sheet reads back as marker 4 (${JSON.stringify(got)})`);
+  ok(await p.evaluate(() => document.getElementById('style').value) === 'hatch', 'ink saver is the default');
+  // a printed marker, photographed (well, screenshotted) and read back, in
+  // each style, sharp and small (as if from across the room)
+  for(const style of ['hatch', 'light', 'solid']){
+    await p.selectOption('#style', style);
+    const note = await p.evaluate(() => document.getElementById('inkNote').textContent);
+    const png = await (await p.$$('.sheet'))[4].screenshot();
+    const got = await p.evaluate(async b64 => {
+      const {Detector} = await import('./markers.js');
+      const img = new Image();
+      img.src = 'data:image/png;base64,' + b64;
+      await img.decode();
+      const out = [];
+      for(const k of [2, 6]){
+        const w = Math.round(img.width / k), h = Math.round(img.height / k);
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h);
+        const d = g.getImageData(0, 0, w, h).data, gray = new Uint8Array(w * h);
+        for(let i = 0; i < w * h; i++) gray[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) >> 8;
+        out.push(new Detector(w, h).detect(gray).map(m => m.id));
+      }
+      return out;
+    }, png.toString('base64'));
+    ok(got.every(g => g.length === 1 && g[0] === 3), `${style}: a printed marker reads back, close and small (${JSON.stringify(got)}) - ${note}`);
+  }
   await p.close();
 }
 
@@ -174,7 +184,7 @@ const B = await phone('Bob', -1.1);
 ok(await until(B, () => NW_TEST.state().joined && !NW_TEST.iAmHost() && !!NW_TEST.layout(), null, 30000), 'a second phone joins the game and is given the room');
 const w2 = await whereAmI(B, [-1.0, 1.5, 0.8], 0.7, -0.1, -1.1);
 console.log('       P', w2.P && w2.P.map(v => v.toFixed(2)), 'truth', w2.truth && w2.truth.map(v => v.toFixed(2)), await B.evaluate(() => JSON.stringify(NW_TEST.focal())));
-ok(w2.err < 0.3, `a second phone, its sensors pointing elsewhere, finds itself from a marker (${(w2.err * 100).toFixed(0)} cm out)`);
+ok(w2.err < 0.35, `a second phone, its sensors pointing elsewhere and its lens not yet learnt (8% out), finds itself from a marker (${(w2.err * 100).toFixed(0)} cm out)`);
 ok(w2.yawErr < 0.08, `and which way round the room it is (${(w2.yawErr * 180 / Math.PI).toFixed(1)}° out)`);
 await A.screenshot({path: 'shots/haunt-lobby.png'});
 

@@ -355,7 +355,11 @@ export class Locator {
       } else {
         this.pending = null;
         if(!this.P || !fresh) this.P = P;
-        else { const k = Math.min(1, dt * 10); this.P = add(this.P, scale(sub(P, this.P), k)); }
+        else {
+          // glide there over about a tenth of a second, however often frames come
+          const k = 1 - Math.exp(-(this.t - this.fixT) / 0.1);
+          this.P = add(this.P, scale(sub(P, this.P), k));
+        }
       }
       this.fixT = this.t;
     }

@@ -56,6 +56,13 @@ body { margin: 0; font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, san
   <select id="singles"></select>
   <label for="pairs">Pairs (left + right, for a wide opening)</label>
   <select id="pairs"><option value="0">None</option><option value="1" selected>One pair (A)</option><option value="2">Two (A, B)</option><option value="3">Three (A, B, C)</option></select>
+  <label for="style">Ink</label>
+  <select id="style">
+    <option value="hatch" selected>Ink saver - hatched, solid edge (recommended)</option>
+    <option value="light">Lightest - hatched, thin edge</option>
+    <option value="solid">Solid black - most precise</option>
+  </select>
+  <p id="inkNote" style="font-size:14px"></p>
   <div class="row"><button class="go" id="print" type="button">🖨 PRINT</button><a href="./" id="playLink">Open the game</a></div>
   <p class="warn">Print at <b>100% / actual size</b> - not "fit to page". The line on the first page should measure exactly 10 cm. Plain white paper; matte is better than glossy.</p>
 </div>
@@ -63,7 +70,7 @@ body { margin: 0; font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, san
 
 <script src="../qr.js"></script>
 <script type="module">
-import {markerSVG, label, pairOf, SINGLES} from './markers.js';
+import {markerSVG, label, pairOf, SINGLES, inkOf, STYLES} from './markers.js';
 
 const $ = id => document.getElementById(id);
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -106,10 +113,17 @@ function draw(){
   $('code').textContent = code;
   $('codeNote').textContent = recall('nwatch_set_printed') === code ? 'You have printed this set before. Reprinting gives the same code.' : '';
   $('playLink').href = './#' + code;
-  const singles = +$('singles').value, pairs = +$('pairs').value;
+  const singles = +$('singles').value, pairs = +$('pairs').value, style = $('style').value;
+  store('nwatch_print_style', style);
   const ids = [];
   for(let i = 0; i < singles; i++) ids.push(i);
   for(let k = 0; k < pairs; k++) ids.push(SINGLES + k * 2, SINGLES + k * 2 + 1);
+  const ink = st => ids.reduce((a, id) => a + inkOf(id, st), 0);
+  const save = 1 - ink(style) / ink('solid');
+  $('inkNote').textContent = style === 'solid' ? 'Each marker is a 16 cm square, about 80% black.'
+    : `About ${Math.round(save * 100)}% less ink than solid black. ` + (style === 'hatch'
+      ? 'Found just as far away; positions within about 1% of the distance.'
+      : 'Found just as far away; distances a few percent less exact (fine to play with).');
   const foot = `Night Watch · Haunted House · set ${code}`;
   let html = `<section class="sheet cover">
     <h2>HAUNTED HOUSE</h2>
@@ -130,7 +144,7 @@ function draw(){
     html += `<section class="sheet">
       <div class="num">${label(id).toUpperCase()}</div>
       <span class="arrow">${ARROW}</span>
-      <div class="mark">${markerSVG(id)}</div>
+      <div class="mark">${markerSVG(id, style)}</div>
       <p class="how">${howTo(id)}</p>
       <div class="foot">${foot}</div>
     </section>`;
@@ -140,6 +154,8 @@ function draw(){
 }
 $('singles').addEventListener('change', draw);
 $('pairs').addEventListener('change', draw);
+$('style').addEventListener('change', draw);
+if(STYLES[recall('nwatch_print_style')]) $('style').value = recall('nwatch_print_style');
 $('newCode').addEventListener('click', () => {
   if(!confirm('A new set gets a new join code. Markers printed for the old set will still work with the old code. Make a new one?')) return;
   code = newCode(); store('nwatch_set', code); location.hash = code; draw();
