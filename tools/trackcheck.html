@@ -21,7 +21,7 @@ const walk = GAME ? gameWalk : hardWalk, TOTAL = GAME ? GAME_TIME : WALK_TIME;
 
 const renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), preserveDrawingBuffer: true});
 renderer.setSize(W, H, false);
-const scene = buildRoom(THREE);
+const scene = buildRoom(THREE, {plain: params.get('plain') === '1'});
 const cam = new THREE.PerspectiveCamera(2 * Math.atan(H / 2 / F) * 180 / Math.PI, W / H, 0.05, 50);
 cam.rotation.order = 'YXZ';
 const rt = new THREE.WebGLRenderTarget(W, H);
@@ -113,6 +113,10 @@ window.run = async () => {
   // the worst error in each part of the walk
   const phase = (a, b) => { let m = 0; for(const o of out) if(o.t >= a && o.t < b){ const e = Math.hypot(o.pos[0] - (o.truth[0] - t0p[0]), o.pos[1] - o.truth[1], o.pos[2] - (o.truth[2] - t0p[2])); m = Math.max(m, e); } return m; };
   const phases = GAME ? {scan: phase(0, 9), toWindow: phase(9, 16), toSecond: phase(16, 21), back: phase(21, 26)} : {};
+  // the pumpkin test: how far something pinned before turning all the way
+  // round has moved when the phone faces it again (the error then, minus the error before)
+  const errAt = tt => { const o = out.find(x => x.t >= tt); return [o.pos[0] - (o.truth[0] - t0p[0]), o.pos[1] - o.truth[1], o.pos[2] - (o.truth[2] - t0p[2])]; };
+  if(GAME){ const a = errAt(1.9), b = errAt(9.0); phases.turnBack = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
   return {phases, frames: out.length, tracked, metricAt, rmse: n ? Math.sqrt(se / n) : null, maxE, msPerFrame: ms / out.length,
     focal: tr.f, focalTrue: F, rows, log};
 };

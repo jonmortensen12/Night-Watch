@@ -45,7 +45,23 @@ function wall(g, s, r, base){
   }
 }
 
-export function buildRoom(THREE){
+/* painted walls, like most rooms: a picture or two, trim, a switch */
+function plainWall(g, s, r, base){
+  g.fillStyle = base; g.fillRect(0, 0, s, s);
+  for(let i = 0; i < 1500; i++){ g.fillStyle = `rgba(0,0,0,${r() * 0.03})`; g.fillRect(r() * s, r() * s, 2 + r() * 8, 2 + r() * 8); }
+  g.fillStyle = '#f2efe8'; g.fillRect(0, s * 0.94, s, s * 0.06);           // skirting board
+  for(let i = 0; i < 2; i++){
+    const w = 80 + r() * 140, h = 60 + r() * 120, x = 60 + r() * (s - w - 120), y = s * 0.15 + r() * s * 0.3;
+    g.fillStyle = '#2a1e14'; g.fillRect(x - 8, y - 8, w + 16, h + 16);
+    g.fillStyle = `hsl(${r() * 360},30%,${30 + r() * 30}%)`; g.fillRect(x, y, w, h);
+    for(let k = 0; k < 8; k++){ g.fillStyle = `hsl(${r() * 360},40%,${25 + r() * 50}%)`; g.beginPath(); g.arc(x + r() * w, y + r() * h, 5 + r() * 25, 0, 6.3); g.fill(); }
+  }
+  g.fillStyle = '#fafafa'; g.fillRect(s * (0.2 + r() * 0.6), s * 0.55, 22, 34);   // a switch
+  g.strokeStyle = '#999'; g.strokeRect(s * 0.5, s * 0.55, 22, 34);
+}
+
+export function buildRoom(THREE, opts){
+  const plain = opts && opts.plain;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x202020);
   const {w, d, h} = ROOM;
@@ -65,7 +81,7 @@ export function buildRoom(THREE){
     g.restore();
   })), [0, 0, 0], [-Math.PI / 2, 0, 0]);
   plane(w, d, mat(tex(THREE, 512, 5, (g, s, r) => { g.fillStyle = '#d8d4cc'; g.fillRect(0, 0, s, s); for(let i = 0; i < 400; i++){ g.fillStyle = `rgba(0,0,0,${r() * 0.15})`; g.fillRect(r() * s, r() * s, 3 + r() * 10, 3 + r() * 10); } })), [0, h, 0], [Math.PI / 2, 0, 0]);
-  const wallMat = seed => mat(tex(THREE, 1024, seed, (g, s, r) => wall(g, s, r, ['#8a7f6e', '#6f7f8a', '#7d8a6f', '#8a6f7a'][seed % 4])));
+  const wallMat = seed => mat(tex(THREE, 1024, seed, (g, s, r) => (plain ? plainWall : wall)(g, s, r, ['#8a7f6e', '#6f7f8a', '#7d8a6f', '#8a6f7a'][seed % 4])));
   plane(w, h, wallMat(11), [0, h / 2, -d / 2], [0, 0, 0]);
   plane(w, h, wallMat(12), [0, h / 2, d / 2], [0, Math.PI, 0]);
   plane(d, h, wallMat(13), [-w / 2, h / 2, 0], [0, Math.PI / 2, 0]);

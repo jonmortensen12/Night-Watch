@@ -427,6 +427,27 @@ walk to the front window, to the left window, back) and a hard one (brisk,
 looking all over). `IDEAL=1`, `WALK=game`, `AUDIT=1` (each landmark checked
 against the real room surface), `DBG=1 T0= T1=`, `VERBOSE=1`, `SHOT=1`.
 
+**First real phone test (an iPhone, a carpeted room, 2026-10-31):** 30 fps
+with the tracker taking 9 ms a frame; ~640 landmarks, ~90 agreeing; it
+learnt the lens (270 px at 240x320) and that the camera runs ~40 ms behind
+the sensors. The pumpkin stayed put walking slowly round it, but **moved
+after turning away and back.** Cause: drifted a little while facing away,
+then the old landmarks were not found where it looked and, after ten
+misses, were thrown away. Fixed: landmarks coming back into view after a
+while are searched for further and not held to account straight away, and
+a confirmed, often-seen landmark survives a long run of misses. In the
+pretend room a point pinned before turning all the way round and back now
+moves ~4 cm (it is a check in `trackcheck`).
+
+**Walls, like the floor.** Play is mostly looking at walls, and painted
+walls have few corners. Upright planes are fitted to the confirmed
+landmarks (`findWalls`, RANSAC on pairs, up to six, each with its extent),
+and a new corner on a known wall is placed on it at once (`wallHit`) - on
+probation, like floor guesses, since a chair in front of a wall is not on
+it. When short of corners the FAST threshold drops (16 to 9). The test page
+draws found walls as faint blue grids. `trackcheck` has a plain-painted
+room (`plain=1`).
+
 **Where it stands (honestly):** standing, scanning and walking to the first
 window track to within roughly 10 to 50 cm in the pretend room; longer walks
 drift by a metre or more and do not always snap back; with the sensors'

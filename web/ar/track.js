@@ -371,7 +371,10 @@ export class Tracker {
       this.state = this.lms.length < 8 ? 'start' : this.coast > 0.5 ? 'lost' : 'track';
       if(this.coast > 0.3 && this.frame % 2 === 0) this.relocate(R);
     }
-    this.lms = this.lms.filter(l => !(l.miss > 10 && l.miss > l.seen * 0.6));
+    // a landmark that has been seen many times and confirmed is kept through
+    // a long run of misses: it is probably the position that is wrong
+    this.lms = this.lms.filter(l => !(l.tent || l.seen < 25 ? l.miss > 10 && l.miss > l.seen * 0.6 : l.miss > 45 && l.miss > l.seen));
+    if(this.frame % 30 === 0) this.findWalls();
     // lost for a while with nothing known in view: carry on from here with
     // new landmarks rather than wait for old ones that may never come back
     if(this.coast === 0 || this.lms.length < 8 || this.coast > 0.6) this.grow(this.Rc);
@@ -395,8 +398,12 @@ export class Tracker {
       // nearer than when its snapshot was taken looks bigger
       const scale = len(sub(lm.X, lm.cap)) / Math.max(0.05, p[2]);
       if(scale > 1.7 || scale < 0.6){ lm.miss++; continue; }
-      const m = this.find(lm, p[0], p[1], rad, scale);
-      if(!m || m.s < 0.72){ lm.miss++; continue; }
+      // back in view after a while (the phone turned away and back): the
+      // position has probably drifted meanwhile, so look further, and do not
+      // count it against the landmark if it is not found straight away
+      const back = this.frame - (lm.lastF || 0) > 20;
+      const m = this.find(lm, p[0], p[1], back ? Math.min(44, rad * 1.8) : rad, scale);
+      if(!m || m.s < 0.72){ if(!back || lm.tent) lm.miss++; continue; }
       ms.push({lm, u: m.x, v: m.y, b: nrm(mv(R, this.ray(m.x, m.y))), s: m.s});
     }
     return ms;
@@ -819,11 +826,18 @@ export class Tracker {
     const mark = (u, v) => taken.add(((v / cell) | 0) * cw + ((u / cell) | 0));
     for(const lm of this.lms) if(lm.vis) mark(lm.u, lm.v);
     for(const cd of this.cands) mark(cd.u, cd.v);
-    for(const k of fast(this.img0, w, h, 16, cell, 10)){
+    // plain painted walls have few strong corners: take weaker ones when short
+    let corners = fast(this.img0, w, h, 16, cell, 10);
+    if(few && corners.length < 30) corners = fast(this.img0, w, h, 9, cell, 10);
+    for(const k of corners){
       const key = ((k.y / cell) | 0) * cw + ((k.x / cell) | 0);
       if(taken.has(key)) continue;
       taken.add(key);
       const b = nrm(mv(R, this.ray(k.x, k.y)));
+      // on a wall already found: placed at once, like the floor (and on
+      // probation the same way - a chair in front of the wall is not on it)
+      const wh = b[1] > -0.4 ? this.wallHit(this.c, b) : null;
+      if(wh){ this.addLandmark(k.x, k.y, wh, false, null, null, b, true); continue; }
       // on the floor, if it is low enough in the picture and not too far
       // (steeply: the lower half of every wall and all the furniture is below
       // eye level too, but not this far below it, this close)
@@ -838,13 +852,58 @@ export class Tracker {
     }
   }
 
-  addLandmark(u, v, X, floor, first, from, b){
-    const lm = {X, seen: 1, miss: 0, u, v, vis: true, floor, tent: true, cap: this.c.slice(), cap0: this.c.slice(), born: this.frame, lastU: u, lastV: v, lastF: this.frame,
-      prob: !!floor, ok: 0, bad: 0, b0: b || nrm(sub(X, this.c))};
+  addLandmark(u, v, X, floor, first, from, b, wall){
+    const lm = {X, seen: 1, miss: 0, u, v, vis: true, floor, wall: !!wall, tent: true, cap: this.c.slice(), cap0: this.c.slice(), born: this.frame, lastU: u, lastV: v, lastF: this.frame,
+      prob: !!floor || !!wall, ok: 0, bad: 0, b0: b || nrm(sub(X, this.c))};
     if(!this.snap(lm, u, v)) return;
     if(first) this.addRay(lm, first.c, first.b);
     this.addRay(lm, this.c, nrm(sub(X, this.c)));
     this.lms.push(lm);
+  }
+
+  /* ---------- the walls ----------
+     Upright flat surfaces, found among the confirmed landmarks: RANSAC on
+     pairs (an upright plane through two points), then the next wall among
+     what is left, up to six. Each remembers how far along it the landmarks
+     reach, so a corner is only put on it within that stretch. */
+  findWalls(){
+    let pts = this.lms.filter(l => !l.tent && !l.floor && !l.prob && l.X[1] > 0.15 && l.X[1] < 2.8).map(l => l.X);
+    const walls = [];
+    for(let wn = 0; wn < 6 && pts.length >= 12; wn++){
+      let best = null, bestIn = [];
+      for(let it = 0; it < 120; it++){
+        const a = pts[(this.rand() * pts.length) | 0], b = pts[(this.rand() * pts.length) | 0];
+        const dx = b[0] - a[0], dz = b[2] - a[2], l = Math.hypot(dx, dz);
+        if(l < 0.4) continue;
+        const n = [dz / l, 0, -dx / l], d = dot(n, a);
+        const inl = pts.filter(p => Math.abs(dot(n, p) - d) < 0.05);
+        if(inl.length > bestIn.length){ bestIn = inl; best = {n, d}; }
+      }
+      if(!best || bestIn.length < 12) break;
+      // refit through all of them (the mean point; the direction from the spread along it)
+      const t = [-best.n[2], 0, best.n[0]];
+      const along = bestIn.map(p => dot(t, p)).sort((x, y) => x - y);
+      const mean = scl(bestIn.reduce((acc, p) => add(acc, p), [0, 0, 0]), 1 / bestIn.length);
+      best.d = dot(best.n, mean);
+      best.t = t; best.a0 = along[0] - 0.6; best.a1 = along[along.length - 1] + 0.6;
+      walls.push(best);
+      pts = pts.filter(p => bestIn.indexOf(p) < 0);
+    }
+    if(walls.length || this.frame % 300 === 0) this.walls = walls;
+  }
+  /* Where a ray from c along b meets a known wall first, or null. */
+  wallHit(c, b){
+    let best = null, bt = 8;
+    for(const W of this.walls || []){
+      const den = dot(W.n, b);
+      if(Math.abs(den) < 0.15) continue;            // too glancing to trust
+      const t = (W.d - dot(W.n, c)) / den;
+      if(t < 0.4 || t > bt) continue;
+      const X = add(c, scl(b, t)), a = dot(W.t, X);
+      if(a < W.a0 || a > W.a1 || X[1] < 0.03 || X[1] > 2.7) continue;
+      bt = t; best = X;
+    }
+    return best;
   }
 
   /* ---------- for the game ---------- */

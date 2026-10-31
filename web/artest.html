@@ -34,6 +34,7 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
   <h1>AR TRACKER TEST</h1>
   <p>Hold the phone at chest height and look down at the floor in front of you. Then walk slowly round the room, looking at the walls - side to side as well as forward.</p>
   <p>A pumpkin appears on the floor in front of where you started. If it stays put as you walk round it, the tracker works in your room. Tap PLACE PUMPKIN to put it where you are pointing.</p>
+  <p>Walls it has worked out show as faint blue grids. Step side to side while looking at a wall to help it find one.</p>
   <button id="go">START</button>
   <p id="err" style="color:#ff6a7a"></p>
 </div>
@@ -180,6 +181,7 @@ function draw(r){
     pk.position.set(r.pos[0] + f.x * 2, 0, r.pos[2] + f.z * 2);
     pk.visible = placed = true;
   }
+  if(tr.frame % 30 === 0) showWalls();
   renderer.render(scene, cam);
   // the tracked points
   dg.clearRect(0, 0, W, H);
@@ -187,10 +189,33 @@ function draw(r){
   for(const [u, vv] of tr.points()){ dg.beginPath(); dg.arc(v.ox + u * v.k * v.s, v.oy + vv * v.k * v.s, 3, 0, 6.3); dg.fill(); }
   $('bar').textContent = `${r.state.toUpperCase()}  points ${r.landmarks}  agreeing ${r.inliers}\n` +
     `at ${r.pos.map(x => (x * 100).toFixed(0)).join(', ')} cm   ${fps.toFixed(0)} fps, tracker ${ms.toFixed(0)} ms\n` +
-    `lens ${tr.f.toFixed(0)} px   sensor timing ${(tr.lag * 1000).toFixed(0)} ms   picture ${TW}x${TH}`;
+    `lens ${tr.f.toFixed(0)} px   sensor timing ${(tr.lag * 1000).toFixed(0)} ms   walls ${(tr.walls || []).length}   picture ${TW}x${TH}`;
   $('tip').textContent = r.state === 'start' ? 'Look down at the floor in front of you' :
     r.state === 'lost' ? 'Lost - point at something with detail, slow down' :
     !placed ? 'Walk slowly, looking round...' : '';
+}
+
+/* The walls the tracker has found, as faint blue grids, so you can see
+   whether it has understood the room. */
+const wallGroup = new THREE.Group();
+scene.add(wallGroup);
+const wallMat = new THREE.MeshBasicMaterial({color: 0x4dd0ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false});
+const lineMat = new THREE.LineBasicMaterial({color: 0x4dd0ff, transparent: true, opacity: 0.55});
+function showWalls(){
+  wallGroup.clear();
+  for(const W of tr.walls || []){
+    const len = W.a1 - W.a0, mid = (W.a0 + W.a1) / 2, H = 2.4;
+    const centre = new THREE.Vector3(W.n[0] * W.d + W.t[0] * mid, H / 2, W.n[2] * W.d + W.t[2] * mid);
+    const g = new THREE.Group();
+    g.position.copy(centre);
+    g.rotation.y = Math.atan2(W.n[0], W.n[2]);
+    g.add(new THREE.Mesh(new THREE.PlaneGeometry(len, H), wallMat));
+    const pts = [];
+    for(let x = -len / 2; x <= len / 2 + 1e-6; x += 0.5) pts.push(new THREE.Vector3(x, -H / 2, 0), new THREE.Vector3(x, H / 2, 0));
+    for(let y = -H / 2; y <= H / 2 + 1e-6; y += 0.5) pts.push(new THREE.Vector3(-len / 2, y, 0), new THREE.Vector3(len / 2, y, 0));
+    g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lineMat));
+    wallGroup.add(g);
+  }
 }
 
 $('placeBtn').addEventListener('click', () => {
