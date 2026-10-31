@@ -448,6 +448,19 @@ it. When short of corners the FAST threshold drops (16 to 9). The test page
 draws found walls as faint blue grids. `trackcheck` has a plain-painted
 room (`plain=1`).
 
+**Steady mode (the test page's default; the plan for AR Bunker).** Asked
+for after the first tests ("maybe we're expecting too much from the camera
+- the monsters stay put really well with just rotation"). With the camera
+feed behind the monsters every error shows, so: turning comes from the
+motion sensors alone, with only the slow learnt corrections
+(`sensorRotation()`: steady error and timing, no frame-by-frame nudge);
+position follows the tracker only while it is sure (tracking, 20+
+agreeing), glides there at most walking pace with a 1 cm dead band, and
+holds still otherwise (the bar says HOLDING). In the pretend room the
+biggest single-frame jump goes from 60-80 cm (raw) to 6 cm; `trackcheck`
+checks it stays under 8 cm. STEADY on the test page switches back to raw
+for comparison.
+
 **Where it stands (honestly):** standing, scanning and walking to the first
 window track to within roughly 10 to 50 cm in the pretend room; longer walks
 drift by a metre or more and do not always snap back; with the sensors'

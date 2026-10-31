@@ -923,6 +923,11 @@ export class Tracker {
   }
   /* The camera's rotation with the sensors' learnt error taken out, as a 3x3 row-major matrix. */
   rotation(){ return this.Rc; }
+  /* The sensors' rotation with only the slow, learnt corrections (their
+     steady error and their timing against the camera) - no frame-by-frame
+     nudging from the picture. Smooth, like the rest of the game, and lined
+     up with the video. */
+  sensorRotation(){ return this.R; }
   /* Tracked points on screen, for drawing the dots that show it working. */
   points(){ return this.lms.filter(l => l.vis && l.miss === 0).map(l => [l.u, l.v]); }
 }

@@ -29,12 +29,13 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
 <div id="cross"></div>
 <div id="bar"></div>
 <div id="tip"></div>
-<div id="btns"><button class="alt" id="placeBtn">PLACE PUMPKIN</button><button class="alt" id="resetBtn">RESET</button></div>
+<div id="btns"><button class="alt" id="placeBtn">PLACE</button><button class="alt" id="steadyBtn">STEADY: ON</button><button class="alt" id="resetBtn">RESET</button></div>
 <div id="start">
   <h1>AR TRACKER TEST</h1>
   <p>Hold the phone at chest height and look down at the floor in front of you. Then walk slowly round the room, looking at the walls - side to side as well as forward.</p>
   <p>A pumpkin appears on the floor in front of where you started. If it stays put as you walk round it, the tracker works in your room. Tap PLACE PUMPKIN to put it where you are pointing.</p>
   <p>Walls it has worked out show as faint blue grids. Step side to side while looking at a wall to help it find one.</p>
+  <p>STEADY (on by default) turns with the motion sensors and only moves you when the camera is sure; tap it to compare with the camera alone.</p>
   <button id="go">START</button>
   <p id="err" style="color:#ff6a7a"></p>
 </div>
@@ -163,14 +164,48 @@ function onFrame(){
   draw(r);
 }
 
+/* STEADY (the default): turning comes from the motion sensors alone, with
+   only the slow corrections the camera has learnt (their steady error, their
+   40-odd ms of timing against the video). Position follows the tracker only
+   while it is sure of itself - tracking, plenty agreeing - and glides there
+   (never faster than walking pace, small wobbles ignored); when it is not
+   sure, the view holds still rather than jump. A bad moment then looks like
+   standing still, not like the pumpkin flying off.
+   Off: the tracker's own rotation and position, frame by frame (as before). */
+let steady = true, holding = false;
+const shown = new THREE.Vector3(0, 1.35, 0);
+let shownInit = false;
+function steadyPos(r, dt){
+  const p = new THREE.Vector3(r.pos[0], r.pos[1], r.pos[2]);
+  if(!shownInit){ shown.copy(p); shownInit = true; }
+  const sure = r.state === 'track' && r.inliers >= 20;
+  holding = !sure;
+  if(!sure) return shown;
+  const d = p.clone().sub(shown), dist = d.length();
+  if(dist < 0.01) return shown;                       // a wobble, not a step
+  // glide: a fifth of the way each frame, at most walking pace (1.5 m/s)
+  const step = Math.min(dist * 0.2, 1.5 * dt);
+  shown.addScaledVector(d, step / dist);
+  return shown;
+}
+$('steadyBtn').addEventListener('click', () => {
+  steady = !steady;
+  $('steadyBtn').textContent = 'STEADY: ' + (steady ? 'ON' : 'OFF');
+  shownInit = false;
+});
+
 const M = new THREE.Matrix4();
+let lastDraw = performance.now();
 function draw(r){
   const v = view(), W = innerWidth, H = innerHeight;
-  // the overlay camera: where the tracker says, turned as it says, with the screen's view
-  const R = tr.rotation();
+  const now = performance.now(), dt = Math.min(0.1, (now - lastDraw) / 1000);
+  lastDraw = now;
+  // the overlay camera, turned and placed as above, with the screen's view
+  const R = steady ? tr.sensorRotation() : tr.rotation();
   M.set(R[0], R[1], R[2], 0, R[3], R[4], R[5], 0, R[6], R[7], R[8], 0, 0, 0, 0, 1);
   cam.quaternion.setFromRotationMatrix(M);
-  cam.position.set(r.pos[0], r.pos[1], r.pos[2]);
+  if(steady) cam.position.copy(steadyPos(r, dt));
+  else { cam.position.set(r.pos[0], r.pos[1], r.pos[2]); holding = false; }
   cam.fov = 2 * Math.atan(H / 2 / v.fScreen) * 180 / Math.PI;
   cam.aspect = W / H;
   // the video's centre may be off the screen's centre after cropping
@@ -178,7 +213,7 @@ function draw(r){
   if(!placed && r.state === 'track' && r.landmarks > 25){
     // two metres in front of where the phone was facing, on the floor
     const f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion); f.y = 0; f.normalize();
-    pk.position.set(r.pos[0] + f.x * 2, 0, r.pos[2] + f.z * 2);
+    pk.position.set(cam.position.x + f.x * 2, 0, cam.position.z + f.z * 2);
     pk.visible = placed = true;
   }
   if(tr.frame % 30 === 0) showWalls();
@@ -187,7 +222,7 @@ function draw(r){
   dg.clearRect(0, 0, W, H);
   dg.fillStyle = r.state === 'track' ? '#4dff88' : '#ffcc44';
   for(const [u, vv] of tr.points()){ dg.beginPath(); dg.arc(v.ox + u * v.k * v.s, v.oy + vv * v.k * v.s, 3, 0, 6.3); dg.fill(); }
-  $('bar').textContent = `${r.state.toUpperCase()}  points ${r.landmarks}  agreeing ${r.inliers}\n` +
+  $('bar').textContent = `${r.state.toUpperCase()}${steady ? (holding ? '  HOLDING' : '  following') : '  raw'}  points ${r.landmarks}  agreeing ${r.inliers}\n` +
     `at ${r.pos.map(x => (x * 100).toFixed(0)).join(', ')} cm   ${fps.toFixed(0)} fps, tracker ${ms.toFixed(0)} ms\n` +
     `lens ${tr.f.toFixed(0)} px   sensor timing ${(tr.lag * 1000).toFixed(0)} ms   walls ${(tr.walls || []).length}   picture ${TW}x${TH}`;
   $('tip').textContent = r.state === 'start' ? 'Look down at the floor in front of you' :
@@ -221,10 +256,11 @@ function showWalls(){
 $('placeBtn').addEventListener('click', () => {
   if(!tr) return;
   const p = tr.pointAt(tr.w / 2, tr.h / 2);
+  // (the tracker's frame; in steady mode the view may be a little behind it)
   if(p){ pk.position.set(p[0], Math.max(0, p[1] - 0.2), p[2]); pk.visible = placed = true; }
   else $('tip').textContent = 'Nothing tracked there yet - point at somewhere with green dots';
 });
-$('resetBtn').addEventListener('click', () => { if(tr){ tr.reset(); placed = false; pk.visible = false; } });
+$('resetBtn').addEventListener('click', () => { if(tr){ tr.reset(); placed = false; pk.visible = false; shownInit = false; } });
 </script>
 </body>
 </html>

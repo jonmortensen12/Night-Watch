@@ -117,7 +117,26 @@ window.run = async () => {
   // round has moved when the phone faces it again (the error then, minus the error before)
   const errAt = tt => { const o = out.find(x => x.t >= tt); return [o.pos[0] - (o.truth[0] - t0p[0]), o.pos[1] - o.truth[1], o.pos[2] - (o.truth[2] - t0p[2])]; };
   if(GAME){ const a = errAt(1.9), b = errAt(9.0); phases.turnBack = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
-  return {phases, frames: out.length, tracked, metricAt, rmse: n ? Math.sqrt(se / n) : null, maxE, msPerFrame: ms / out.length,
+  // the same steady filter as the test page: follow only when sure, glide, hold otherwise
+  const steady = {maxErr: 0, maxJump: 0, rawJump: 0};
+  {
+    let sh = null, prev = null, prevRaw = null;
+    for(const o of out){
+      const p = o.pos.slice();
+      if(!sh) sh = p.slice();
+      if(o.state === 'track' && o.inl >= 20){
+        const d = [p[0] - sh[0], p[1] - sh[1], p[2] - sh[2]], dist = Math.hypot(...d);
+        if(dist >= 0.01){ const st = Math.min(dist * 0.2, 1.5 * dt); for(let k = 0; k < 3; k++) sh[k] += d[k] * st / dist; }
+      }
+      // error against the truth's own movement since the last frame: what you see as a jump
+      const tr = [o.truth[0] - t0p[0], o.truth[1], o.truth[2] - t0p[2]];
+      steady.maxErr = Math.max(steady.maxErr, Math.hypot(sh[0] - tr[0], sh[1] - tr[1], sh[2] - tr[2]));
+      if(prev){ steady.maxJump = Math.max(steady.maxJump, Math.hypot(sh[0] - prev.s[0] - (tr[0] - prev.t[0]), sh[1] - prev.s[1] - (tr[1] - prev.t[1]), sh[2] - prev.s[2] - (tr[2] - prev.t[2]))); }
+      if(prevRaw){ steady.rawJump = Math.max(steady.rawJump, Math.hypot(p[0] - prevRaw.s[0] - (tr[0] - prevRaw.t[0]), p[1] - prevRaw.s[1] - (tr[1] - prevRaw.t[1]), p[2] - prevRaw.s[2] - (tr[2] - prevRaw.t[2]))); }
+      prev = {s: sh.slice(), t: tr}; prevRaw = {s: p, t: tr};
+    }
+  }
+  return {steady, phases, frames: out.length, tracked, metricAt, rmse: n ? Math.sqrt(se / n) : null, maxE, msPerFrame: ms / out.length,
     focal: tr.f, focalTrue: F, rows, log};
 };
 window.ready = true;

@@ -49,12 +49,13 @@ async function run(label, query){
 if(process.env.IDEAL){ await run('ideal', (process.env.REAL ? '?x=1' : '?lat=0&noise=0&drift=0&fguess=1') + (process.env.WALK ? '&walk=' + process.env.WALK : '') + (process.env.PLAIN ? '&plain=1' : '') + (process.env.NOLEARN ? '&nolearn=1' : '') + (process.env.DBG ? '&dbg=1&t0=' + (process.env.T0 || 7) + '&t1=' + (process.env.T1 || 10.5) : '') + (process.env.AUDIT ? '&audit=1' : '')); process.exit(0); }
 /* The game's walk is the one that has to work; the hard one (brisk, looking
    all over, into parts of the room never seen) is reported, to improve. */
-const report = (r) => { const ph = r.phases; console.log(`    worst error: scan ${(ph.scan * 100).toFixed(0)} cm, to the window ${(ph.toWindow * 100).toFixed(0)} cm, to the second window ${(ph.toSecond * 100).toFixed(0)} cm, back ${(ph.back * 100).toFixed(0)} cm; turned all the way round and back: moved ${(ph.turnBack * 100).toFixed(0)} cm`); };
+const report = (r) => { const ph = r.phases; console.log(`    biggest single-frame jump: raw ${(r.steady.rawJump * 100).toFixed(0)} cm, steady ${(r.steady.maxJump * 100).toFixed(0)} cm`); console.log(`    worst error: scan ${(ph.scan * 100).toFixed(0)} cm, to the window ${(ph.toWindow * 100).toFixed(0)} cm, to the second window ${(ph.toSecond * 100).toFixed(0)} cm, back ${(ph.back * 100).toFixed(0)} cm; turned all the way round and back: moved ${(ph.turnBack * 100).toFixed(0)} cm`); };
 const g = await run('game walk, ordinary sensors', '?walk=game');
 const ph = g.phases;
 report(g);
 const pl = await run('game walk, plain painted walls', '?walk=game&plain=1');
 report(pl);
+ok(pl.steady.maxJump < 0.08 && g.steady.maxJump < 0.08, 'steady mode never jumps more than 8 cm in a frame');
 ok(pl.phases.turnBack < 0.3, 'plain walls: turn all the way round and back, and a pinned thing has moved under 30 cm');
 ok(ph.scan < 0.5, 'standing and scanning: the phone stays put (within 50 cm)');
 ok(ph.toWindow < 0.6, 'walking to the window: within 60 cm');
