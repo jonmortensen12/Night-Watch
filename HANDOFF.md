@@ -33,7 +33,8 @@ Fire-Stick-bound), a full working game. Working title.
 | `web/lib/` | three.js r170 and its bloom passes, vendored so the game does not depend on a CDN for its 3D. |
 | `web/music/` | Rendered by `tools/music.py`. |
 | `worker.js`, `wrangler.jsonc` | Serves `web/` and `/relay` (Cloudflare TURN), exactly as Mission Control. |
-| `simcheck.mjs`, `netcheck.mjs` | The checks. `tools/art.mjs` draws the icons and link preview. |
+| `web/haunt/` | The Haunted House (AR with printed markers): its own page at `/haunt/`, `print.html` for the markers. See its section below. |
+| `simcheck.mjs`, `netcheck.mjs`, `hauntcheck.mjs` | The checks. `tools/art.mjs` draws the icons and link preview. |
 
 ## Playing alone
 
@@ -377,7 +378,11 @@ from Chromium's DevTools protocol, walking and firing at once (with
 `NW_TEST.sensors()` standing in for motion sensors). The sniper's button
 reads "✕ UNZOOM" while the scope is up.
 
-## AR Bunker (in progress): our own camera tracker
+## AR Bunker (shelved): our own camera tracker
+
+Superseded by the Haunted House (below), which uses printed markers
+instead. Kept because it works in places and taught a lot; nothing in the
+game loads it except `haunt/simcam.js`, which borrows its pretend room.
 
 Asked for: monsters anchored in the real room so they do not slide as you
 walk, the map shared between phones, no TV and no printed marker, and no
@@ -473,10 +478,148 @@ PLACE), and the numbers (state, landmarks, position, frame rate, tracker
 time, learnt sensor timing and lens). Not linked from the game. The real
 room will say more than the pretend one: lighting, blur, real sensors.
 
-Next, once the phone test says it is good enough: AR Bunker itself (tag
-real windows and doors as barricades, boards on them, the camera image
-darkening wave by wave, the roof torn open for the witch), then sharing the
-map between phones.
+After the second phone test ("the blue walls didn't stay put very well and
+the pumpkin still moved around if you turned your back") the camera-only
+approach was set aside for printed markers: the Haunted House.
+
+## The Haunted House (`web/haunt/`)
+
+The bunker's game in your own living room, through the phone's camera.
+Asked for (2026-10-31): printed markers, one per sheet, at least eight; a
+printed join QR code per set that keeps its code for good; the first phone
+in hosts and the next takes over if it drops; a marker on a wall marks
+where monsters break through, at its height; one on the floor is a door or
+threshold; furniture ignored, and monsters never come through the room
+itself; its own link, not a tab; the same aim assist as the other games; a
+full-immersion toggle; battery saving not yet.
+
+**Playing it.** `print.html` makes a set: a six-letter code (kept in the
+browser, `#CODE` reprints it), a cover sheet with the join QR code
+(`/haunt/#CODE`) and the rules, then one marker per sheet: 0-11 singles,
+12-17 three pairs (A, B, C: left and right edges of a wide opening). The
+black square prints at exactly 16 cm (a 10 cm line on the cover checks the
+printer's scaling). Everybody scans the cover. Once per room, somebody taps
+SET UP THE ROOM, stands in the middle and turns slowly round pointing at
+every marker; the plan is kept (per set, on every phone) until it is set up
+again. Then READY. Shoot from anywhere; to repair a hole you walk over to
+it (within 1.25 m) and hold REPAIR.
+
+**Files.**
+| File | What it is |
+|---|---|
+| `haunt/index.html` | The page: join-or-host, the survey, the lobby, the game, the results. |
+| `haunt/markers.js` | The markers: the dictionary, drawing them, finding them in a frame, and the camera's pose from one. |
+| `haunt/room.js` | The survey, the room plan (portals from markers), finding yourself (`Locator`), the focal length. Plain arrays, no three.js. |
+| `haunt/view.js` | `Haunt extends Yard`: the camera picture, stencilled holes into the graveyard, the planks, the ceiling, full immersion. |
+| `haunt/print.html` | The printable set. |
+| `haunt/simcam.js` | A pretend camera for testing (`?sim=1`): `ar/fakeroom.js` with markers taped up. |
+
+**The markers.** 6x6 cells: a black border and 4x4 bits, eighteen codes
+picked so any two differ in at least five bits however either is turned
+(so the way up is never in doubt, and a bit or two misread is never
+another marker). Found by an adaptive threshold (integral image), dark
+blobs, each blob's convex hull cut down to four corners, the edges pulled
+onto the exact light-dark step (sub-pixel, line fits), then the cells read
+through the homography - every inner cell has to be clearly black or white,
+or a picture on the wall would now and then read as a marker. About 5-10 ms
+a frame at 640 px on a laptop; a phone that takes over 14 ms looks every
+other frame. Pose: homography, then Levenberg-Marquardt on the corners'
+reprojection, from both of the two answers a flat square allows; `amb` says
+how close the other came (near 1: do not trust the turn).
+
+**The room plan.** The survey phone's own sensors are the room's frame
+(so its yaw offset is 0 by definition): y up from the floor, the middle
+where the survey stood. Each sighting gives a marker's position (sensor
+rotation x the marker's offset from the camera, plus where the camera is -
+corrected by markers already placed, so stepping about does little harm)
+and how it lies. Walls stand straight and the floor is level (gravity), so
+orientations are squared up. The floor is at the floor markers' height, or
+1.35 m below the phone if there are none. Portals (`makeLayout`): a wall
+marker is a 1.2 m square hole centred on it (down to the floor if that
+would leave less than 30 cm of wall); a floor marker a 1 m x 2.05 m doorway
+standing on it, its way out where the printed arrow points; a pair spans
+the gap between its two. The layout is `{markers: {id: {p, q, kind}},
+portals: [{name, kind, a, b, n, y0, y1, ids}], ceil}`.
+
+**The focal length** matters more than anything else: every distance
+scales with it. The survey works it out for itself (`Survey.calibrate`):
+turning on the spot, a marker sweeps across the picture, and with the wrong
+focal length its direction (sensor rotation x its pixel's ray) wanders as
+it goes - the right one holds every marker still. 444 px against a true 448
+in the pretend room. The survey is then gone over again with it. Other
+phones use what they kept from before (`nwatch_focal`), else a guess (0.76
+x the long side), nudged by markers seen well askew (homography focal,
+weighted median) and by pairs of markers in view at once (the focal length
+that puts the phone in the same place by both).
+
+**Finding yourself** (`Locator`, every phone, every frame): the yaw between
+this phone's sensors and the room from each marker's turn (robust: a
+circular median of the last 20 s, weighted against ambiguous poses) and,
+better, from two markers in view at once (the line between them). Then the
+position: each marker's known place minus (yaw x sensor rotation x its
+offset from the camera) - only the marker's centre and distance, which are
+solid, and the sensors' rotation, which is smooth. A leap of over 1.5 m is
+believed only after four agreeing sightings. Between sightings the phone
+stays where it was last seen to be; the view still turns freely with the
+sensors. "Point the camera at a marker" shows until the first fix, and
+"Lost track" after 8 s without one mid-game.
+
+**The view** (`Haunt`, built on `Yard`, so the monsters, guns, effects and
+the phone controller `zombie-phone.js` are shared with the bunker). The
+camera's picture is a full-screen quad drawn first, cropped to cover the
+screen; the 3D camera's field of view is worked out from the focal length
+and that crop so the two match exactly (and the scope zooms both, 4x).
+Each portal is drawn first as an invisible quad that writes 1 to the
+stencil; everything out in the graveyard - sky, ground, gravestones, mist,
+and each monster until it is past its portal or climbing - is drawn only
+where the stencil is 1. Since every portal is on the room's edge, nothing
+outside can show up in front of one. Room things (planks, health bars,
+sparks, tracers, smoke, the gun) are drawn everywhere. Planks cover the
+lower two thirds of a hole, with gaps, so what is coming can be seen; they
+glow a little so they are not black holes against the camera picture. The
+picture darkens and cools wave by wave (to 42%). The witch tears a hole in
+the ceiling above the middle of the room (another stencil hole) and circles
+low (5-6 m out, 6.5 m up) so she is seen through it. **Full immersion**
+(lobby, or the 📷/🌙 button): no picture; a papered, boarded room the shape
+of the layout's bounding box, drawn everywhere except through the holes
+(stencil not-equal), friends drawn as avatars; the camera fades back in
+(up to 85%) while you walk, from the accelerometer or from the position
+moving.
+
+**The rules** are `zsim.js` with a layout (`create(seed, layout)`): the
+portals are the sections. Monsters spawn 20-26 m out beyond a portal and
+walk to it; each wave picks the portals it comes through (1 on wave 1, 2
+on waves 2-3, then 3; not the same ones twice running) and the phones say
+so ("Coming through window 2 and door 3!", red dots on the minimap). Bats
+come in low at the opening; climbers go over the window sill; ghosts drift
+through boards or no boards, and are in once they are 30 cm past the
+opening; knock-back is straight out of the portal; pumpkin bombs hit one
+portal. Players are not moved or clamped (they stand where they really
+are) and shoot from their real height. In `simcheck` computer defenders
+who walk at 1.3 m/s from the middle last about as long as the bunker's.
+
+**Joining, and the host leaving.** The room id is `haunt-CODE`. A phone
+first tries to join it; if nobody answers (`peer-unavailable`, or a
+timeout), it hosts (`createHost({mode: 'haunt', code, layout, ...})`); if
+somebody else got there first (`taken` - with `?local=1` a probe on the
+BroadcastChannel stands in for the broker), it joins them. The host sends
+the layout to each phone as it joins, and a copy of the whole game state
+(`bk`) to every phone every 2 s. A host that goes quiet for 3.5 s (or whose
+connection closes) has gone: the phones line up by when they joined; the
+first hosts at once with the last copy, carrying on mid-wave; the others
+look for it and take over themselves if nobody turns up. The players keep
+their colours and scores (same device ids).
+
+**`hauntcheck.mjs`**: the print page reads back; first phone in hosts; the
+survey finds every marker (wall/floor right), makes the four portals at the
+right places (17 cm worst between markers), heights (1-2 cm), facing and
+widths, and the focal length (1%); a phone that walked away knows where it
+is (~10 cm); a second phone with its sensors turned 1.7 rad differently
+finds the room's yaw (~1-4°) and itself (~25 cm, uncalibrated lens); a game
+plays (monsters come through the holes, both phones shoot them through the
+pretend camera); standing at a hole offers REPAIR and it works; full
+immersion draws the room; the host's tab closes and the second phone takes
+over mid-wave, and a new phone joins the new host. Screenshots in `shots/`.
 
 ## Not built yet / to check
 
@@ -496,7 +639,17 @@ map between phones.
   stick plus turning feels right, how dark it is on a real phone (the
   torch, `toneMappingExposure`), whether eight sections is the right
   number to watch, and the monster counts per wave.
-- **Bunker AR** (zombies through your real windows) needs the camera and
-  is Android-only on the web; deliberately not started.
+- **The Haunted House has never been played on a real phone.** Check
+  first: how far away the markers are found (16 cm at 640 px: about 4 m,
+  fewer in dim light; the detection size could go up), whether the picture
+  and the 3D line up (the focal length; the camera's real field of view;
+  any delay between the sensors and the picture), whether held-still
+  positions between marker sightings are good enough or need the
+  accelerometer, the frame rate with detection every frame, and battery.
+  iPhones: camera needs https and a tap (both there); Safari's motion
+  permission is asked in the same tap.
+- **Haunted House, not built:** battery saving (look for markers less often
+  in full immersion), naming portals ("kitchen window"), a portal's size
+  set by hand, a TV view, a second room per set.
 - Ideas not built: a "spotter" role for a phone that just points and tags
   enemies for others, a radar sphere, versus mode.

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haunted House - print a set</title>
+<link rel="icon" href="../icon-192.png">
+<style>
+/* On screen: a short form, then the pages as they will print. On paper:
+   only the pages, one marker to a sheet, at exactly 16 cm. */
+:root { --ink: #1b1b22; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--ink); background: #2a2233; }
+#form { max-width: 640px; margin: 0 auto; padding: 24px 18px; color: #f3ecff; }
+#form h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: 0.06em; }
+#form p { color: #cbbfe0; margin: 8px 0; }
+#form .code { font: 900 34px ui-monospace, monospace; letter-spacing: 0.25em; color: #ffb35c; }
+#form label { display: block; margin: 14px 0 6px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #a99cc4; }
+#form select, #form button { font: inherit; font-weight: 700; padding: 12px 16px; border-radius: 12px; border: 1px solid #6b4f8f; background: #3a2b4d; color: #fff; }
+#form button.go { background: linear-gradient(180deg, #ff9a3c, #d9561a); border-color: #ffc28a; }
+#form .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+#form .warn { background: #4a2030; border: 1px solid #a04060; padding: 10px 12px; border-radius: 10px; color: #ffd8e2; font-size: 14px; }
+#form a { color: #ffb35c; }
+.sheet { width: 210mm; height: 270mm; margin: 12px auto; background: #fff; padding: 8mm 10mm; position: relative; overflow: hidden; box-shadow: 0 4px 24px #0008; }
+.sheet .num { font: 900 15mm/1 system-ui, sans-serif; text-align: center; margin-top: 2mm; }
+.sheet .arrow { width: 22mm; height: 22mm; margin: 2mm auto 0; display: block; }
+.sheet .mark { width: 160mm; height: 160mm; display: block; margin: 16mm auto 0; }
+.sheet .how { margin: 16mm 8mm 0; font-size: 12pt; color: #333; text-align: center; }
+.sheet .foot { position: absolute; left: 0; right: 0; bottom: 6mm; text-align: center; font-size: 9pt; color: #999; }
+.cover h2 { font: 900 13mm/1.1 system-ui, sans-serif; text-align: center; margin: 6mm 0 2mm; letter-spacing: 0.04em; }
+.cover .sub { text-align: center; font-size: 13pt; color: #555; margin: 0 0 6mm; }
+.cover .qr { display: block; width: 70mm; height: 70mm; margin: 0 auto; image-rendering: pixelated; }
+.cover .setcode { text-align: center; font: 900 12mm ui-monospace, monospace; letter-spacing: 0.3em; margin: 3mm 0 0; }
+.cover ol { font-size: 11.5pt; margin: 6mm 6mm 0; padding-left: 7mm; color: #222; }
+.cover ol li { margin: 0 0 2.2mm; }
+.ruler { margin: 5mm auto 0; width: 100mm; border-top: 0.6mm solid #000; position: relative; font-size: 9pt; text-align: center; padding-top: 1mm; }
+.ruler::before, .ruler::after { content: ''; position: absolute; top: -3mm; width: 0.6mm; height: 5.4mm; background: #000; }
+.ruler::before { left: 0; } .ruler::after { right: 0; }
+@page { size: auto; margin: 0; }
+@media print {
+  body { background: #fff; }
+  #form { display: none; }
+  .sheet { margin: 0; box-shadow: none; page-break-after: always; break-after: page; height: 270mm; }
+  .sheet:last-child { page-break-after: auto; break-after: auto; }
+}
+</style>
+</head>
+<body>
+<div id="form">
+  <h1>🎃 HAUNTED HOUSE</h1>
+  <p>Print a set of markers. Tape them up round a room: each one is a place monsters break through. Everybody joins by scanning the code on the first page, and the set keeps that code for good - print it once, play with it whenever.</p>
+  <label>This set's code</label>
+  <div class="row"><span class="code" id="code"></span><button id="newCode" type="button">Make a new set</button></div>
+  <p id="codeNote" style="font-size:14px"></p>
+  <label for="singles">Single markers (a window or a doorway each)</label>
+  <select id="singles"></select>
+  <label for="pairs">Pairs (left + right, for a wide opening)</label>
+  <select id="pairs"><option value="0">None</option><option value="1" selected>One pair (A)</option><option value="2">Two (A, B)</option><option value="3">Three (A, B, C)</option></select>
+  <div class="row"><button class="go" id="print" type="button">🖨 PRINT</button><a href="./" id="playLink">Open the game</a></div>
+  <p class="warn">Print at <b>100% / actual size</b> - not "fit to page". The line on the first page should measure exactly 10 cm. Plain white paper; matte is better than glossy.</p>
+</div>
+<div id="pages"></div>
+
+<script src="../qr.js"></script>
+<script type="module">
+import {markerSVG, label, pairOf, SINGLES} from './markers.js';
+
+const $ = id => document.getElementById(id);
+const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newCode(){ let c = ''; for(let i = 0; i < 6; i++) c += LETTERS[Math.floor(Math.random() * LETTERS.length)]; return c; }
+function recall(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function store(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+
+/* A set code from the link (#ABCDEF reprints a set), the one this browser
+   made before, or a new one. */
+let code = (location.hash || '').replace('#', '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+if(code.length !== 6) code = recall('nwatch_set') || newCode();
+store('nwatch_set', code);
+
+for(let i = 4; i <= SINGLES; i++){ const o = document.createElement('option'); o.value = i; o.textContent = i; if(i === 8) o.selected = true; $('singles').appendChild(o); }
+
+function joinUrl(){ return location.href.split('#')[0].split('?')[0].replace(/print\.html$/, '') + '#' + code; }
+
+const ARROW = `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 1 L18 10 H13 V19 H7 V10 H2 Z" fill="none" stroke="#b8b8b8" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+
+function qrImg(text){
+  const m = qrMatrix(text, 'M'), n = m.length, s = 8;
+  const c = document.createElement('canvas');
+  c.width = c.height = (n + 8) * s;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = '#000';
+  for(let y = 0; y < n; y++) for(let x = 0; x < n; x++) if(m[y][x]) g.fillRect((x + 4) * s, (y + 4) * s, s, s);
+  return c.toDataURL();
+}
+
+function howTo(id){
+  const p = pairOf(id);
+  if(p) return p.side === 'L'
+    ? `Pair ${p.pair}, <b>left</b> edge of a wide opening (as you look at it from inside the room). Its partner goes on the right edge, at the same height. On a wall: a wide window between them. On the floor: a wide doorway.`
+    : `Pair ${p.pair}, <b>right</b> edge of a wide opening (as you look at it from inside the room). Its partner goes on the left edge, at the same height.`;
+  return `<b>On a wall:</b> tape it where a monster should break through - the hole opens around it, at its height.<br><b>On the floor:</b> a doorway. Lay it flat with the arrow pointing the way the monsters come from.`;
+}
+
+function draw(){
+  $('code').textContent = code;
+  $('codeNote').textContent = recall('nwatch_set_printed') === code ? 'You have printed this set before. Reprinting gives the same code.' : '';
+  $('playLink').href = './#' + code;
+  const singles = +$('singles').value, pairs = +$('pairs').value;
+  const ids = [];
+  for(let i = 0; i < singles; i++) ids.push(i);
+  for(let k = 0; k < pairs; k++) ids.push(SINGLES + k * 2, SINGLES + k * 2 + 1);
+  const foot = `Night Watch · Haunted House · set ${code}`;
+  let html = `<section class="sheet cover">
+    <h2>HAUNTED HOUSE</h2>
+    <p class="sub">Scan to join the game - set <b>${code}</b></p>
+    <img class="qr" src="${qrImg(joinUrl())}" alt="join code">
+    <div class="setcode">${code}</div>
+    <ol>
+      <li>Tape the markers round one room: on walls where monsters should break in (windows are good), and on the floor at doorways. ${ids.length} markers, use as many as you like - three to six is plenty to start.</li>
+      <li>Everybody scans this code. The first phone in runs the game; if it drops out, the next one carries on.</li>
+      <li>The first time, somebody taps <b>SET UP THE ROOM</b>, stands in the middle and turns slowly round, pointing at every marker. The room is remembered: move a marker and set it up again.</li>
+      <li>Shoot from anywhere. To repair a hole you have to walk over to it and hold REPAIR. If one gets in, you lose.</li>
+      <li>Keep the room lit enough to see the markers, and clear the floor - you will be walking about looking at your phone.</li>
+    </ol>
+    <div class="ruler">this line should be exactly 10 cm - if not, print at 100%</div>
+    <div class="foot">${foot}</div>
+  </section>`;
+  for(const id of ids){
+    html += `<section class="sheet">
+      <div class="num">${label(id).toUpperCase()}</div>
+      <span class="arrow">${ARROW}</span>
+      <div class="mark">${markerSVG(id)}</div>
+      <p class="how">${howTo(id)}</p>
+      <div class="foot">${foot}</div>
+    </section>`;
+  }
+  $('pages').innerHTML = html;
+  $('pages').querySelectorAll('.mark svg').forEach(s => { s.setAttribute('width', '100%'); s.setAttribute('height', '100%'); });
+}
+$('singles').addEventListener('change', draw);
+$('pairs').addEventListener('change', draw);
+$('newCode').addEventListener('click', () => {
+  if(!confirm('A new set gets a new join code. Markers printed for the old set will still work with the old code. Make a new one?')) return;
+  code = newCode(); store('nwatch_set', code); location.hash = code; draw();
+});
+$('print').addEventListener('click', () => { store('nwatch_set_printed', code); window.print(); });
+draw();
+window.NW_PRINT = {code: () => code, url: joinUrl};
+</script>
+</body>
+</html>

@@ -168,12 +168,14 @@ ok(rows.every(r => r.wt >= 25 && r.wt <= 120), 'waves take half a minute to two 
    person's speed with a person's wobble. */
 function zbot(S, p, mem, skill){
   const live = S.mons.filter(m => m.type !== 'witch' || true);
-  const eye = [p.x, ZB.EYE, p.z];
+  const eye = [p.x, S.haunt ? p.y || ZB.EYE : ZB.EYE, p.z];
+  // in a house the defenders walk for real, at walking pace, from the middle
+  const speed = S.haunt ? 1.3 : ZB.MOVE_SPEED, home = S.haunt ? [S.cx, S.cz] : [0, 0];
   const urgency = m => {
     const c = ZB.centre(m), d = Math.hypot(c[0] - p.x, c[2] - p.z);
     let u = 40 - d;
     if(m.st === 'climb') u += 100;
-    if(m.type === 'ghost') u += 60 - Math.hypot(m.x, m.z) * 2;
+    if(m.type === 'ghost') u += 60 - Math.hypot(m.x - home[0], m.z - home[1]) * 2;
     if(m.type === 'bomb') u += 70;
     if(m.st === 'attack') u += 30 - S.secs[m.sec].hp * 0.2;
     return u + mem.rand() * 5;
@@ -184,22 +186,21 @@ function zbot(S, p, mem, skill){
     mem.tg = best ? best.id : 0; mem.react = skill.react; mem.retarget = 1.5;
   }
   // repairing: the worst section with nothing at it, if this bot is nearest
-  let goal = [0, 0], repair = false;
+  let goal = home.slice(), repair = false;
   let worst = -1, wv = 45;
   S.secs.forEach((s, i) => {
-    const sec = ZB.SECTIONS[i];
     const busy = S.mons.some(m => m.sec === i && (m.st === 'attack' || m.st === 'climb') && m.type !== 'ghost');
     if(!busy && s.hp < wv){ wv = s.hp; worst = i; }
   });
   if(worst >= 0){
-    const sec = ZB.SECTIONS[worst];
+    const sec = S.sd[worst];
     const spot = [sec.mid[0] - sec.n[0] * 0.8, sec.mid[1] - sec.n[1] * 0.8];
     const nearest = Object.values(S.players).filter(q => !q.away).sort((a, b) => Math.hypot(a.x - spot[0], a.z - spot[1]) - Math.hypot(b.x - spot[0], b.z - spot[1]))[0];
     if(nearest === p && !S.mons.some(m => m.st === 'climb')){ goal = spot; repair = Math.hypot(p.x - spot[0], p.z - spot[1]) < 0.6; }
   }
   const gx = goal[0] - p.x, gz = goal[1] - p.z, gl = Math.hypot(gx, gz);
   let x = p.x, z = p.z;
-  if(gl > 0.1){ const k = Math.min(gl, ZB.MOVE_SPEED * DT); x += gx / gl * k; z += gz / gl * k; }
+  if(gl > 0.1){ const k = Math.min(gl, speed * DT); x += gx / gl * k; z += gz / gl * k; }
   const m = live.find(q => q.id === mem.tg);
   let firing = false, tg = 0, w = p.w;
   if(m && !repair){
@@ -217,11 +218,11 @@ function zbot(S, p, mem, skill){
     const off = Math.acos(Math.max(-1, Math.min(1, (p.aim[0] * want[0] + p.aim[1] * want[1] + p.aim[2] * want[2]) / Math.hypot(...p.aim))));
     if(off < Math.atan(0.6 / dist) + 0.02){ firing = true; tg = m.id; }
   }
-  ZB.input(S, p.id, {a: p.aim, x, z, w, tg, f: firing, r: repair, zm: w === 2});
+  ZB.input(S, p.id, {a: p.aim, x, z, y: S.haunt ? 1.4 : undefined, w, tg, f: firing, r: repair, zm: w === 2});
 }
 
-function zplay(n, seed, skill, maxMin = 25){
-  const S = ZB.create(seed);
+function zplay(n, seed, skill, maxMin = 25, layout){
+  const S = ZB.create(seed, layout);
   const mems = [];
   for(let i = 0; i < n; i++){
     ZB.join(S, 'p' + i, 'Bot ' + i);
@@ -229,6 +230,7 @@ function zplay(n, seed, skill, maxMin = 25){
     mems.push({rand: () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)});
   }
   ZB.start(S);
+  if(layout) Object.values(S.players).forEach((p, i) => { p.x = S.cx + (i - n / 2) * 0.5; p.z = S.cz; });
   let t = 0, waveTimes = [], lastWave = 0, lastT = 0, peak = 0, broken = 0;
   while(S.phase !== 'over' && t < maxMin * 60){
     Object.values(S.players).forEach((p, i) => zbot(S, p, mems[i], skill));
@@ -352,6 +354,111 @@ ok(Z['4 average'].waves >= 3 && Z['4 average'].waves <= 14, 'four average defend
 ok(Z['2 good'].waves >= Z['2 average'].waves, 'skill matters');
 ok(zrows.every(r => r.wt >= 25 && r.wt <= 120), 'waves take half a minute to two minutes');
 ok(zrows.every(r => r.broken >= 0.5), 'walls do get broken (repairing matters)');
+
+/* ================================================================ the Haunted House */
+/* The same game in a living room: a window in the front wall and one in
+   the left, a doorway by the right wall, a wide window across the back. */
+const HOUSE = {v: 1, markers: {}, ceil: 2.4, portals: [
+  {name: 'window 1', kind: 'window', a: [0.3, -3], b: [1.5, -3], n: [0, -1], y0: 0.7, y1: 1.9, ids: [0]},
+  {name: 'window 2', kind: 'window', a: [-2.8, -0.8], b: [-2.8, -2.0], n: [-1, 0], y0: 0.6, y1: 1.8, ids: [1]},
+  {name: 'door 3', kind: 'door', a: [2.0, -0.1], b: [2.0, -1.1], n: [1, 0], y0: 0, y1: 2.05, ids: [2]},
+  {name: 'wide window A', kind: 'window', a: [-1.1, 3], b: [0.6, 3], n: [0, 1], y0: 0.45, y1: 1.65, ids: [12, 13]},
+]};
+console.log('haunted house: the rules in a room');
+{
+  const S = ZB.create(21, HOUSE);
+  ok(S.haunt && S.sd.length === 4 && S.secs.length === 4, 'the portals are the sections');
+  ZB.join(S, 'a', 'Ann'); ZB.start(S);
+  ok(S.players.a.x === S.players.a.x, 'players are not moved: they stand where they really are');
+  for(let i = 0; i < 60 * 5; i++) ZB.step(S, DT);
+  ok(S.phase === 'wave' && S.focus.length === 1, `wave 1 comes through one portal (${S.focus.map(i => S.sd[i].name)})`);
+  for(let i = 0; i < 60 * 15; i++) ZB.step(S, DT);
+  ok(S.mons.length > 0 && S.mons.every(m => S.focus.indexOf(m.sec) >= 0), 'every monster heads for it');
+  const outside = S.mons.every(m => { const s = S.sd[m.sec]; return (m.x - s.mid[0]) * s.n[0] + (m.z - s.mid[1]) * s.n[1] > 0; });
+  ok(outside, 'and comes from outside the room, beyond it');
+  const sn = ZB.snap(S);
+  ok(sn.mode === 'haunt' && sn.sec.length === 4 && Array.isArray(sn.foc), 'the snapshot carries the portals and where the wave is coming from');
+  // later waves come at two or three
+  S.wave = 5; S.phase = 'break'; S.phaseT = 0.01; S.mons = [];
+  ZB.step(S, DT);
+  ok(S.focus.length === 3, 'wave 6 comes through three');
+}
+{
+  // an unchecked monster breaks a window and climbs in over the sill
+  const S = ZB.create(22, HOUSE);
+  ZB.join(S, 'a', 'Ann'); ZB.start(S);
+  for(let i = 0; i < 60 * 5; i++) ZB.step(S, DT);
+  S.plan.groups = []; S.mons = [];
+  const s = S.sd[0];
+  ZB.newMonster(S, 'pumpkin', s.mid[0], s.mid[1] - 8, {sec: 0});
+  let n = 0, broke = false, maxY = 0;
+  while(S.phase !== 'over' && n < 60 * 120){ ZB.step(S, DT); n++; if(S.secs[0].broken) broke = true; for(const m of S.mons) if(m.st === 'climb') maxY = Math.max(maxY, m.y); }
+  ok(broke && S.phase === 'over' && S.why.sec === 0, 'an unchecked monster breaks the boards and gets in');
+  ok(maxY > 0.6, `climbing over the window sill (${maxY.toFixed(2)} m up)`);
+}
+{
+  // a ghost drifts through the boards
+  const S = ZB.create(23, HOUSE);
+  ZB.join(S, 'a', 'Ann'); ZB.start(S);
+  for(let i = 0; i < 60 * 5; i++) ZB.step(S, DT);
+  S.plan.groups = []; S.mons = [];
+  const s = S.sd[2];
+  ZB.newMonster(S, 'ghost', s.mid[0] + 10, s.mid[1], {sec: 2, y: 1});
+  let n = 0;
+  while(S.phase !== 'over' && n < 60 * 40){ ZB.step(S, DT); n++; }
+  ok(S.phase === 'over' && S.why.type === 'ghost' && S.why.sec === 2 && !S.secs[2].broken, 'a ghost comes through the doorway, boards or no boards');
+}
+{
+  // repairing: within reach of a portal, not across the room
+  const S = ZB.create(24, HOUSE);
+  ZB.join(S, 'a', 'Ann'); ZB.start(S);
+  for(let i = 0; i < 60 * 5; i++) ZB.step(S, DT);
+  S.plan.groups = []; S.mons = [];
+  ZB.newMonster(S, 'pumpkin', 0, -40, {sec: 0});      // so the wave is not over (a break heals everything)
+  S.secs[1].hp = 30;
+  ZB.input(S, 'a', {a: [-1, 0, 0], x: -1.0, z: -1.4, y: 1.4, w: 0, r: true});
+  for(let i = 0; i < 60; i++) ZB.step(S, DT);
+  ok(S.secs[1].hp === 30, 'not from two metres away');
+  ZB.input(S, 'a', {a: [-1, 0, 0], x: -2.0, z: -1.4, y: 1.4, w: 0, r: true});
+  for(let i = 0; i < 60; i++) ZB.step(S, DT);
+  ok(S.secs[1].hp > 45, 'but from beside it');
+}
+{
+  // the witch circles low over the house, where the hole in the ceiling is
+  const S = ZB.create(25, HOUSE);
+  ZB.join(S, 'a', 'Ann'); ZB.start(S);
+  S.wave = 4;
+  for(let i = 0; i < 60 * 5; i++) ZB.step(S, DT);
+  const w = S.mons.find(m => m.type === 'witch');
+  ok(!!w, 'wave 5 brings the witch');
+  let far = 0, bombs = 0;
+  for(let i = 0; i < 60 * 20; i++){
+    ZB.step(S, DT);
+    if(w.st === 'circle') far = Math.max(far, Math.hypot(w.x - S.cx, w.z - S.cz));
+    for(const e of S.ev) if(e[0] === 'bomb') bombs++;
+    S.ev = [];
+    if(S.phase === 'over') break;
+  }
+  ok(far > 0 && far < 7, `she circles close over the house (${far.toFixed(1)} m out)`);
+  ok(bombs >= 1, 'and bombs its portals');
+}
+console.log('haunted house: whole games, computer defenders walking about');
+const hrows = [];
+for(const [label, n, skill] of [['1 average', 1, AVG], ['2 average', 2, AVG], ['4 average', 4, AVG]]){
+  const res = [];
+  for(let seed = 1; seed <= 5; seed++) res.push(zplay(n, seed, skill, 25, HOUSE));
+  const waves = res.map(r => r.S.wave), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const why = res.map(r => r.S.why ? r.S.why.type[0] : '-').join('');
+  const row = {label, waves: mean(waves), min: mean(res.map(r => r.t / 60)), wt: mean(res.flatMap(r => r.waveTimes)),
+    peak: Math.max(...res.map(r => r.peak)), broken: mean(res.map(r => r.broken))};
+  hrows.push(row);
+  console.log(`  ${label.padEnd(10)} waves ${waves.join(',').padEnd(16)} mean ${row.waves.toFixed(1)}  ${row.min.toFixed(1)} min  ${row.wt.toFixed(0)} s/wave  peak ${row.peak}  portals broken ${row.broken.toFixed(1)}  lost to ${why}`);
+}
+const H = Object.fromEntries(hrows.map(r => [r.label, r]));
+ok(H['1 average'].waves >= 3 && H['1 average'].waves <= 12, 'one average defender lasts a handful of waves');
+ok(H['4 average'].waves >= 4 && H['4 average'].waves <= 16, 'four: longer, but not for ever');
+ok(hrows.every(r => r.wt >= 20 && r.wt <= 120), 'waves take half a minute to two minutes');
+ok(hrows.every(r => r.broken >= 0.5), 'portals do get broken (repairing matters)');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall good');
 process.exit(fails ? 1 : 0);

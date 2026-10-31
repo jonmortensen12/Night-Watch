@@ -60,7 +60,7 @@ async function relayPass(env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === '/relay') {
+    if (url.pathname === '/relay' || url.pathname === '/haunt/relay') {
       return new Response(JSON.stringify(await relayPass(env)), {
         headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
       });

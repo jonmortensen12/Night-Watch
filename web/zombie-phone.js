@@ -17,13 +17,23 @@ const MON_COL = {pumpkin: '#ff9a2a', skeleton: '#f0ead8', ghost: '#8ad0ff', brut
 
 export function createZombiePhone(ctx){
   // ctx: {tx(msg), SND, banner, toast, callout, buzz, look(dx, dy), isDrag(), me: () => colour}
+  // The Haunted House adds: view (its own renderer, already made), sd (its
+  // portals), where() (the phone's place in the room, from its markers:
+  // no stick), reach (how close to stand to repair).
   const SND = ctx.SND;
-  const canvas = document.createElement('canvas');
-  canvas.id = 'zview';
-  canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;display:block;z-index:1';
-  document.body.insertBefore(canvas, document.body.firstChild.nextSibling);
-  const low = /[?&]q=low/.test(location.search);
-  const yard = new Yard(canvas, {mode: 'phone', low});
+  let canvas = null, yard = ctx.view;
+  if(!yard){
+    canvas = document.createElement('canvas');
+    canvas.id = 'zview';
+    canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;display:block;z-index:1';
+    document.body.insertBefore(canvas, document.body.firstChild.nextSibling);
+    const low = /[?&]q=low/.test(location.search);
+    yard = new Yard(canvas, {mode: 'phone', low});
+  } else canvas = yard.canvas;
+  const house = !!ctx.where;
+  let SD = ctx.sd || SECTIONS;
+  const REACH = ctx.reach || REPAIR_REACH;
+  const secName = i => SD[i] ? (house ? SD[i].name : SD[i].name + ' wall') : '';
 
   /* ---------- the overlay ---------- */
   const ui = document.createElement('div');
@@ -47,7 +57,7 @@ export function createZombiePhone(ctx){
       #zstickHint { position: fixed; left: 18px; bottom: calc(30px + env(safe-area-inset-bottom)); z-index: 4; color: #ffffff55; font: 700 11px system-ui; letter-spacing: 0.1em; pointer-events: none; }
     </style>
     <canvas id="zhud"></canvas>
-    <div id="zstickHint">◀ MOVE ▶</div>
+    ${house ? '' : '<div id="zstickHint">◀ MOVE ▶</div>'}
     <div id="zguns">${WEAPONS.map((w, i) => `<button class="zb" data-w="${i}"><b>${ICON[i]}</b>${w.name.toUpperCase()}</button>`).join('')}</div>
     <button class="zb" id="zzoom">🔭<br>ZOOM</button>
     <button class="zb" id="zrep">🔨 HOLD TO REPAIR<small></small></button>
@@ -61,7 +71,7 @@ export function createZombiePhone(ctx){
   const mg = $('#zmap').getContext('2d');
 
   /* ---------- this player ---------- */
-  let x = 0, z = 0, w = 0, zoom = false, repairing = false, firing = false, cd = 0, phase = 'lobby', S = null;
+  let x = 0, y = EYE, z = 0, w = 0, zoom = false, repairing = false, firing = false, cd = 0, phase = 'lobby', S = null;
   let stick = null, stickV = {x: 0, y: 0}, keys = {};
   const fwd = new THREE.Vector3(), up = new THREE.Vector3();
   let aimTarget = null, nearSec = -1, placed = false, active = true, hammerT = 0;
@@ -107,7 +117,7 @@ export function createZombiePhone(ctx){
     SND.unlock();
     if(e.target !== ui && e.target !== hud) return;
     ui.setPointerCapture(e.pointerId);
-    if(!stick && inStickZone(e.clientX, e.clientY)){
+    if(!stick && !house && inStickZone(e.clientX, e.clientY)){
       stick = {id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY};
       return;
     }
@@ -157,7 +167,7 @@ export function createZombiePhone(ctx){
   function send(){
     sendT = 0;
     ctx.tx({t: 'in', a: [+fwd.x.toFixed(3), +fwd.y.toFixed(3), +fwd.z.toFixed(3)], tg: aimTarget ? aimTarget.id : 0,
-      f: firing && !repairing, w, x: +x.toFixed(2), z: +z.toFixed(2), r: repairing && nearSec >= 0, zm: zoom});
+      f: firing && !repairing, w, x: +x.toFixed(2), z: +z.toFixed(2), y: +y.toFixed(2), r: repairing && nearSec >= 0, zm: zoom});
   }
 
   let lastSecs = null;
@@ -167,34 +177,35 @@ export function createZombiePhone(ctx){
     phase = s.ph;
     const mine = (s.pl || []).find(p => p.c === ctx.me());
     // the host places us at the start of a game; after that we walk ourselves
-    if(mine && (!placed || (was !== 'count' && phase === 'count') || phase === 'lobby')){ x = mine.x; z = mine.z; placed = true; }
+    if(mine && !house && (!placed || (was !== 'count' && phase === 'count') || phase === 'lobby')){ x = mine.x; z = mine.z; placed = true; }
     yard.feed(s);
     lastSecs = s.sec;
   }
 
   /* ---------- the events: sounds, words and buzzes ---------- */
-  const thudT = new Array(8).fill(0);
+  const thudT = [];
   yard.onEvent = ev => {
     const k = ev[0];
-    const secPos = i => new THREE.Vector3(SECTIONS[i].mid[0], 1, SECTIONS[i].mid[1]);
+    const secPos = i => new THREE.Vector3(SD[i].mid[0], house ? (SD[i].y0 + SD[i].y1) / 2 : 1, SD[i].mid[1]);
     if(k === 'shot' && ev[1] !== ctx.me()) SND.sfx(['pistol', 'shotgun', 'sniper'][ev[2]], new THREE.Vector3(ev[3], ev[4], ev[5]), 0.5);
     else if(k === 'hit' && ev[2] === ctx.me()){ hits.push({t: performance.now()}); }
     else if(k === 'poof'){
       SND.sfx(ev[2] === 'witch' ? 'bigPoof' : 'poof', new THREE.Vector3(ev[3], ev[4], ev[5]));
       if(ev[6] - 1 === ctx.me()){ ctx.buzz(20); hits.push({t: performance.now(), kill: true}); }
-    } else if(k === 'weak'){ ctx.callout(SECTIONS[ev[1]].name.toUpperCase() + ' wall is weak - repair it!'); SND.sfx('crack', secPos(ev[1]), 0.6); }
+    } else if(k === 'weak'){ ctx.callout(secName(ev[1]).toUpperCase() + ' is weak - repair it!'); SND.sfx('crack', secPos(ev[1]), 0.6); }
     else if(k === 'broken'){
-      ctx.banner(SECTIONS[ev[1]].name.toUpperCase() + ' BROKEN', 'Fix it or hold them off!');
+      ctx.banner(secName(ev[1]).toUpperCase() + ' BROKEN', 'Fix it or hold them off!');
       SND.sfx('crack', secPos(ev[1])); ctx.buzz([60, 40, 60]);
     } else if(k === 'climb'){
-      ctx.callout('CLIMBING IN - ' + SECTIONS[ev[2]].name.toUpperCase() + '!');
+      ctx.callout('CLIMBING IN - ' + secName(ev[2]).toUpperCase() + '!');
       SND.sfx('alarm', secPos(ev[2]));
       ctx.buzz([100, 50, 100]);
-    } else if(k === 'fixed'){ ctx.toast(SECTIONS[ev[1]].name + ' wall fixed'); }
-    else if(k === 'bomb'){ ctx.callout('PUMPKIN BOMB - ' + SECTIONS[ev[1]].name + ' - shoot it!'); SND.sfx('whistle', secPos(ev[1])); }
+    } else if(k === 'fixed'){ ctx.toast(secName(ev[1]) + ' fixed'); }
+    else if(k === 'bomb'){ ctx.callout('PUMPKIN BOMB - ' + secName(ev[1]) + ' - shoot it!'); SND.sfx('whistle', secPos(ev[1])); }
     else if(k === 'blast'){ SND.sfx('blast', new THREE.Vector3(ev[1], 0.5, ev[2])); ctx.buzz(60); }
-    else if(k === 'witch'){ SND.cue('witchwarn'); SND.sfx('cackle'); ctx.banner('THE WITCH', 'Shoot her down before she bombs the walls'); }
-    else if(k === 'summon'){ ctx.callout('She is raising skeletons - ' + sideWords(ev[1], ev[2])); SND.sfx('cackle', new THREE.Vector3(ev[1], 6, ev[2])); }
+    else if(k === 'witch'){ SND.cue('witchwarn'); SND.sfx('cackle'); ctx.banner('THE WITCH', house ? 'She is tearing the roof off - look up!' : 'Shoot her down before she bombs the walls'); }
+    else if(k === 'summon'){ ctx.callout(house ? 'She is raising skeletons!' : 'She is raising skeletons - ' + sideWords(ev[1], ev[2])); SND.sfx('cackle', new THREE.Vector3(ev[1], 6, ev[2])); }
+    else if(k === 'focus' && house){ const n = ev.slice(1).map(i => secName(i)).filter(Boolean); if(n.length) ctx.callout('Coming through ' + n.join(' and ') + '!'); }
     else if(k === 'witchdown'){ ctx.banner('THE WITCH IS DOWN', ''); SND.cue('victory'); }
     if(ctx.onEvent) ctx.onEvent(ev);
   };
@@ -211,7 +222,7 @@ export function createZombiePhone(ctx){
     moanT = 2.2 / Math.min(4, 0.5 + list.length * 0.3) * (0.6 + Math.random() * 0.8);
     // the fence taking blows
     if(S && S.hit) S.hit.forEach((h, i) => {
-      if(h && performance.now() > thudT[i]){ thudT[i] = performance.now() + 450; SND.sfx('thud', new THREE.Vector3(SECTIONS[i].mid[0], 0.8, SECTIONS[i].mid[1]), 0.8); }
+      if(h && SD[i] && performance.now() > (thudT[i] || 0)){ thudT[i] = performance.now() + 450; SND.sfx('thud', new THREE.Vector3(SD[i].mid[0], 0.8, SD[i].mid[1]), 0.8); }
     });
   }
 
@@ -227,26 +238,27 @@ export function createZombiePhone(ctx){
     if(keys.KeyA || keys.ArrowLeft) mx = -1;
     if(keys.KeyD || keys.ArrowRight) mx = 1;
     const fl = Math.hypot(fwd.x, fwd.z) || 1, fx = fwd.x / fl, fz = fwd.z / fl;
-    const canMove = phase !== 'over' && !repairing;
+    const canMove = phase !== 'over' && !repairing && !house;
     const speed = MOVE_SPEED * (zoom ? 0.35 : 1);
+    if(house){ const p = ctx.where(); if(p){ x = p[0]; y = p[1]; z = p[2]; } }
     if(canMove && (mx || my)){
       const ml = Math.min(1, Math.hypot(mx, my));
       const vx = fx * -my + -fz * mx, vz = fz * -my + fx * mx, vl = Math.hypot(vx, vz) || 1;
       x = Math.max(-ROOM, Math.min(ROOM, x + vx / vl * speed * ml * dt));
       z = Math.max(-ROOM, Math.min(ROOM, z + vz / vl * speed * ml * dt));
     }
-    yard.setView(viewQ, x, z);
+    yard.setView(viewQ, x, z, house ? y : undefined);
     SND.listen(fwd, up);
-    SND.listenAt(x, EYE, z);
+    SND.listenAt(x, y, z);
     // the section within reach that needs work
     nearSec = -1;
-    let bd = REPAIR_REACH;
-    if(lastSecs) SECTIONS.forEach((s, i) => { const d = toSection(s, x, z).d; if(d < bd && lastSecs[i] < 100){ bd = d; nearSec = i; } });
+    let bd = REACH;
+    if(lastSecs) SD.forEach((s, i) => { const d = toSection(s, x, z).d; if(d < bd && lastSecs[i] < 100){ bd = d; nearSec = i; } });
     const showRep = nearSec >= 0 && (phase === 'wave' || phase === 'break');
     rep.style.display = showRep ? 'flex' : 'none';
     if(showRep){
       const hp = lastSecs[nearSec];
-      rep.querySelector('small').textContent = SECTIONS[nearSec].name + ' · ' + (hp < 0 ? 'broken' : Math.round(hp) + '%');
+      rep.querySelector('small').textContent = SD[nearSec].name + ' · ' + (hp < 0 ? 'broken' : Math.round(hp) + '%');
     } else if(repairing) setRepair(false);
     $('#zfire').style.display = ctx.isDrag() ? 'flex' : 'none';
     // the guns
@@ -256,7 +268,7 @@ export function createZombiePhone(ctx){
     ambience(dt);
     if(repairing && nearSec >= 0){
       hammerT -= dt;
-      if(hammerT <= 0){ hammerT = 0.32; SND.sfx('hammer', new THREE.Vector3(SECTIONS[nearSec].mid[0], 0.8, SECTIONS[nearSec].mid[1])); ctx.buzz(10); }
+      if(hammerT <= 0){ hammerT = 0.32; SND.sfx('hammer', new THREE.Vector3(SD[nearSec].mid[0], 0.8, SD[nearSec].mid[1])); ctx.buzz(10); }
     }
     sendT += dt;
     if(sendT >= 0.05) send();
@@ -301,7 +313,7 @@ export function createZombiePhone(ctx){
       // arrows to trouble that is off screen: anything at the fence, ghosts, bombs, the witch
       for(const e of yard.mons.values()){
         const c = yard.centreOf(e);
-        const urgent = e.st === 2 || e.type === 'bomb' || (e.type === 'ghost' && Math.hypot(e.d.x, e.d.z) < 12);
+        const urgent = e.st === 2 || e.type === 'bomb' || (e.type === 'ghost' && Math.hypot(e.d.x - mapC[0], e.d.z - mapC[1]) < (house ? 7 : 12));
         const atFence = e.st === 1 || urgent || e.type === 'witch';
         const pr = yard.project(c);
         if(pr.on){
@@ -370,17 +382,26 @@ export function createZombiePhone(ctx){
     }
   }
 
-  /* The bunker from above, FRONT at the top (as the TV shows it). */
+  /* The bunker from above, FRONT at the top (as the TV shows it). A house:
+     its middle in the middle, close enough in to see the portals. */
+  let mapC = [0, 0], mapR = 13;
+  function fitMap(){
+    if(!house || !SD.length){ mapC = [0, 0]; mapR = house ? 6 : 13; return; }
+    mapC = [SD.reduce((a, s) => a + s.mid[0], 0) / SD.length, SD.reduce((a, s) => a + s.mid[1], 0) / SD.length];
+    mapR = Math.max(5, ...SD.map(s => Math.hypot(s.mid[0] - mapC[0], s.mid[1] - mapC[1]) * 1.8));
+  }
+  fitMap();
   function drawMap(){
-    const g = mg, N = 232, c = N / 2, R = 13, k = (N / 2 - 8) / R;
+    const g = mg, N = 232, c = N / 2, R = mapR, k = (N / 2 - 8) / R;
     g.clearRect(0, 0, N, N);
-    const P = (px, pz) => [c + px * k, c + pz * k];
+    const P = (px, pz) => [c + (px - mapC[0]) * k, c + (pz - mapC[1]) * k];
     // monsters
     for(const e of yard.mons.values()){
-      let px = e.d.x, pz = e.d.z;
+      let px = e.d.x - mapC[0], pz = e.d.z - mapC[1];
       const l = Math.hypot(px, pz);
       const edge = l > R;
       if(edge){ px *= R / l; pz *= R / l; }
+      px += mapC[0]; pz += mapC[1];
       const [sx, sy] = P(px, pz);
       g.fillStyle = MON_COL[e.type] || '#f44';
       g.globalAlpha = edge ? 0.5 : 1;
@@ -388,7 +409,7 @@ export function createZombiePhone(ctx){
     }
     g.globalAlpha = 1;
     // the sections
-    if(lastSecs) SECTIONS.forEach((s, i) => {
+    if(lastSecs) SD.forEach((s, i) => {
       const hp = lastSecs[i];
       const [ax, ay] = P(s.a[0], s.a[1]), [bx, by] = P(s.b[0], s.b[1]);
       g.strokeStyle = hp < 0 ? (Math.floor(performance.now() / 250) % 2 ? '#ff2030' : '#400') : hp > 60 ? '#4cff7a' : hp > 30 ? '#ffd23a' : '#ff4a3a';
@@ -400,6 +421,7 @@ export function createZombiePhone(ctx){
       if(p.aw) continue;
       const mine = p.c === ctx.me();
       const [sx, sy] = P(mine ? x : p.x, mine ? z : p.z);
+      if(house && !mine && p.x === 0 && p.z === 0) continue;
       if(mine){
         const a = Math.atan2(fwd.x, fwd.z);
         g.fillStyle = '#ffffff30';
@@ -407,6 +429,17 @@ export function createZombiePhone(ctx){
       }
       g.fillStyle = COLORS[p.c]; g.strokeStyle = '#000'; g.lineWidth = 2;
       g.beginPath(); g.arc(sx, sy, mine ? 7 : 6, 0, Math.PI * 2); g.fill(); g.stroke();
+    }
+    if(house){
+      // where the next wave is coming from
+      for(const i of (S && S.foc) || []){
+        const s = SD[i];
+        if(!s) continue;
+        const [sx, sy] = P(s.mid[0] + s.n[0] * 0.8, s.mid[1] + s.n[1] * 0.8);
+        g.fillStyle = `rgba(255,60,90,${0.5 + 0.5 * Math.sin(performance.now() / 200)})`;
+        g.beginPath(); g.arc(sx, sy, 6, 0, Math.PI * 2); g.fill();
+      }
+      return;
     }
     g.fillStyle = '#7fe0ff'; g.font = '800 18px system-ui'; g.textAlign = 'center';
     g.fillText('FRONT', c, 18);
@@ -419,12 +452,14 @@ export function createZombiePhone(ctx){
   }
   function release(){ fingers.clear(); setFiring(false); setRepair(false); stick = null; stickV = {x: 0, y: 0}; }
 
+  function setSections(sd){ SD = sd; fitMap(); lastSecs = null; }
+
   return {
-    yard, frame, onSnap, send, keydown, keyup, setActive, release,
+    yard, frame, onSnap, send, keydown, keyup, setActive, release, setSections,
     get active(){ return active; },
     // for netcheck
     test: {
-      state: () => ({x, z, w, zoom, repairing, nearSec, target: aimTarget ? aimTarget.id : 0, phase,
+      state: () => ({x, y, z, w, zoom, repairing, nearSec, target: aimTarget ? aimTarget.id : 0, phase,
         mons: [...yard.mons.values()].map(e => ({id: e.id, type: e.type, st: e.st, p: [e.d.x, e.d.y, e.d.z], c: yard.centreOf(e).toArray()})), secs: lastSecs}),
       moveTo(nx, nz){ x = nx; z = nz; },
       weapon: setWeapon, zoom: on => { setZoom(on); send(); }, repair: setRepair,

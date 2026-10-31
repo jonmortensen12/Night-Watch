@@ -13,6 +13,8 @@
    iPad mutes web audio on its silent switch unless the page says it plays
    media - both learned on Mission Control. */
 let AC = null, master = null, sfxBus = null, comp = null;
+// music/ beside this file, whichever page loads it (the Haunted House lives a folder down)
+const MUSIC_DIR = new URL('music/', import.meta.url).href;
 const MUSIC = {man: null, bufs: {}, loading: {}, cur: null, gain: null, want: null, duckUntil: 0, on: true, vol: 0.85};
 let noiseBuf = null;
 
@@ -33,7 +35,7 @@ export function unlock(){
     noiseBuf = AC.createBuffer(1, n, AC.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for(let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
-    fetch('music/music.json').then(r => r.json()).then(m => { MUSIC.man = m; }).catch(() => {});
+    fetch(MUSIC_DIR + 'music.json').then(r => r.json()).then(m => { MUSIC.man = m; }).catch(() => {});
   }
   if(AC.state !== 'running') AC.resume();
   // iOS: a sound started inside the touch is what wakes it
@@ -310,7 +312,7 @@ function musicBuf(key){
   if(MUSIC.bufs[key]) return MUSIC.bufs[key];
   if(!soundOn() || MUSIC.loading[key]) return null;
   MUSIC.loading[key] = true;
-  fetch('music/' + e.file).then(r => r.arrayBuffer()).then(data =>
+  fetch(MUSIC_DIR + e.file).then(r => r.arrayBuffer()).then(data =>
     AC.decodeAudioData(data, buf => { MUSIC.bufs[key] = buf; }, () => { MUSIC.loading[key] = false; })
   ).catch(() => { MUSIC.loading[key] = false; });
   return null;

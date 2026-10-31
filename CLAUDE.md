@@ -21,17 +21,19 @@ Run the checks from the repo root.
 ## Before shipping
 
 ```
-node simcheck.mjs    # both simulations, headless: space and the bunker, tuning with computer players
+node simcheck.mjs    # the simulations, headless: space, the bunker and the Haunted House, tuning with computer players
 node netcheck.mjs    # the TV and phones in Chromium over ?local=1: space, a phone-hosted game, then the bunker
+node hauntcheck.mjs  # the Haunted House with a pretend camera: print, survey, finding yourself, a game, the host leaving
 node tools/art.mjs   # redraw the icons and link preview after changing how ships or the sky look
 python3 tools/samples.py && python3 tools/music.py   # re-render web/music/ after changing a piece
 ```
 
-`node trackcheck.mjs` tests the AR camera tracker (`web/ar/track.js`) in a
-pretend room. It is a progress report while AR Bunker is being built, not a
-gate - see HANDOFF.md.
+`node trackcheck.mjs` tests the shelved camera-only AR tracker
+(`web/ar/track.js`). It is a progress report, not a gate - see HANDOFF.md.
+The Haunted House uses printed markers instead (`web/haunt/`).
 
-`web/sim.js` (space) and `web/zsim.js` (the bunker) decide everything that
+`web/sim.js` (space) and `web/zsim.js` (the bunker, and the Haunted House
+given a room layout) decide everything that
 happens and draw nothing. Change the
 difficulty there and `simcheck` says whether the waves still last a
 sensible time with one, two and four players.

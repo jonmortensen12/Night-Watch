@@ -99,11 +99,16 @@ function localConn(bc, me, other){
   };
 }
 
-function hostLocal(code, h){
-  var bc = new BroadcastChannel(PREFIX + code), conns = {};
+function hostLocal(code, h, fixed){
+  var bc = new BroadcastChannel(PREFIX + code), conns = {}, opened = false, dead = false;
   bc.onmessage = function(ev){
     var m = ev.data;
-    if(!m || (m.to && m.to !== 'host')) return;
+    if(!m) return;
+    if(m.k === 'held'){ if(m.to === me && !opened && !dead){ dead = true; bc.close(); h.error('taken'); } return; }
+    if(m.to && m.to !== 'host') return;
+    // somebody else asking whether this room is free: it is not
+    if(m.k === 'probe'){ if(opened) bc.postMessage({k: 'held', to: m.from}); return; }
+    if(!opened) return;
     if(m.k === 'hello'){
       var c = localConn(bc, 'host', m.from);
       conns[m.from] = c;
@@ -113,8 +118,15 @@ function hostLocal(code, h){
     } else if(m.k === 'd' && conns[m.from]) conns[m.from]._fire('data', m.d);
     else if(m.k === 'close' && conns[m.from]){ conns[m.from]._closed(); delete conns[m.from]; }
   };
-  setTimeout(function(){ h.open(); }, 0);
+  // a fixed code may already be held (the Haunted House): ask first, as the
+  // PeerJS broker would refuse a taken id
+  var me = 'h' + Math.random().toString(36).slice(2, 10);
+  if(fixed){
+    bc.postMessage({k: 'probe', from: me});
+    setTimeout(function(){ if(!dead){ opened = true; h.open(); } }, 300);
+  } else { opened = true; setTimeout(function(){ h.open(); }, 0); }
   return {destroy: function(){
+    dead = true;
     Object.keys(conns).forEach(function(k){ conns[k].close(); });
     bc.close();
   }};
@@ -125,7 +137,7 @@ function joinLocal(code, h){
   var me = 'p' + Math.random().toString(36).slice(2, 10), c = null;
   var timer = setTimeout(function(){
     if(!c){ bc.close(); h.error('peer-unavailable'); }
-  }, 8000);   // generous: a test machine drawing four WebGL tabs in software is slow to answer
+  }, h.timeout || 8000);   // generous: a test machine drawing four WebGL tabs in software is slow to answer
   bc.onmessage = function(ev){
     var m = ev.data;
     if(!m || m.to !== me) return;
@@ -164,7 +176,7 @@ function hostPeer(code, opts, h){
 
 function joinPeer(code, opts, h){
   var peer = new root.Peer(opts), done = false;
-  var timer = setTimeout(function(){ if(!done){ done = true; try { peer.destroy(); } catch(e){} h.error('timeout'); } }, 15000);
+  var timer = setTimeout(function(){ if(!done){ done = true; try { peer.destroy(); } catch(e){} h.error('timeout'); } }, h.timeout || 15000);
   peer.on('open', function(){
     var conn = peer.connect(PREFIX + code, {reliable: true});
     conn.on('open', function(){ if(done) return; done = true; clearTimeout(timer); h.open(conn); });
@@ -179,10 +191,11 @@ function joinPeer(code, opts, h){
 }
 
 /* Open a room. h = {open(code), conn(conn), error(msg)}. A code already in
-   use somewhere in the world gets a new one, quietly. */
-function host(h){
-  var code = codeGen();
-  if(isLocal()) return hostLocal(code, {open: function(){ h.open(code); }, conn: h.conn, error: h.error});
+   use somewhere in the world gets a new one, quietly - unless the code was
+   given (the Haunted House's printed set), when it is h.error('taken'). */
+function host(h, fixed){
+  var code = fixed || codeGen();
+  if(isLocal()) return hostLocal(code, {open: function(){ h.open(code); }, conn: h.conn, error: h.error}, !!fixed);
   if(!webrtcHere()){ h.error('This browser has no WebRTC, which is what the phones connect over. Open the game in Chrome or Safari instead.'); return null; }
   var handle = {destroy: function(){ if(handle.inner) handle.inner.destroy(); }};
   loadPeer(function(err){
@@ -191,7 +204,7 @@ function host(h){
       (function attempt(){
         handle.inner = hostPeer(code, opts, {
           open: function(){ h.open(code); }, conn: h.conn,
-          error: function(m){ if(m === 'taken'){ code = codeGen(); attempt(); } else h.error(m); }
+          error: function(m){ if(m === 'taken' && !fixed){ code = codeGen(); attempt(); } else h.error(m); }
         });
       })();
     });

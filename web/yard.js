@@ -378,6 +378,8 @@ function buildAvatar(color, name){
 /* ================================================================ */
 export class Yard {
   constructor(canvas, opts){
+    this.opts = opts;
+    this.sd = opts.sd || SECTIONS;       // the sections: the fence, or a house's portals
     this.mode = opts.mode;
     this.tv = opts.mode === 'tv';
     this.low = !!opts.low;
@@ -387,13 +389,13 @@ export class Yard {
     this.mons = new Map();
     this.avatars = new Map();
     this.time = 0; this.last = performance.now();
-    this.secs = [100, 100, 100, 100, 100, 100, 100, 100];
-    this.secHit = [0, 0, 0, 0, 0, 0, 0, 0];
+    this.secs = this.sd.map(() => 100);
+    this.secHit = this.sd.map(() => 0);
     this.players = [];
     this.weapon = 0; this.zoom = false; this.recoil = 0; this.swap = 0;
     this.pos = new THREE.Vector3(0, EYE, 0);
 
-    const r = this.renderer = new THREE.WebGLRenderer({canvas, antialias: !this.low, powerPreference: 'high-performance'});
+    const r = this.renderer = new THREE.WebGLRenderer({canvas, antialias: !this.low, powerPreference: 'high-performance', stencil: !!opts.stencil});
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.55;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -450,7 +452,7 @@ export class Yard {
       this.cam.add(torch); this.cam.add(torch.target);
     }
     this.composer = null;
-    if(!this.low){
+    if(!this.low && !opts.noBloom){
       const c = this.composer = new EffectComposer(r);
       c.addPass(new RenderPass(scene, this.cam));
       c.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.75, 0.5, 0.78));
@@ -725,6 +727,7 @@ export class Yard {
     if(s.sec){
       s.sec.forEach((hp, i) => {
         const sec = this.sections[i];
+        if(!sec) return;
         if(s.hit && s.hit[i]) sec.shake = 0.25;
         this.secs[i] = hp;
       });
@@ -781,7 +784,7 @@ export class Yard {
       this.parts.burst(p, 30, 3, new THREE.Color(0.6, 1.8, 0.4), 0.3, 1.0, true);
       this.puff(p, 6, new THREE.Color(0.25, 0.2, 0.15), 2.2, 1.2);
       this.blast.position.copy(p); this.blast.intensity = 60;
-      this.sections[ev[3]].shake = 0.6;
+      if(this.sections[ev[3]]) this.sections[ev[3]].shake = 0.6;
     }
     if(this.onEvent) this.onEvent(ev);
   }
@@ -838,9 +841,9 @@ export class Yard {
   }
 
   /* ---------- the phone ---------- */
-  setView(q, x, z){
+  setView(q, x, z, y){
     this.cam.quaternion.copy(q);
-    this.cam.position.set(x, EYE, z);
+    this.cam.position.set(x, y == null ? EYE : y, z);
   }
   setWeapon(w){ if(w !== this.weapon){ this.weapon = w; this.swap = 1; } }
   setZoom(z){ if(z !== this.zoom){ this.zoom = z; this.applyFov(); } }
@@ -906,7 +909,7 @@ export class Yard {
       while(sec.shown > want){
         const p = sec.planks[--sec.shown];
         p.visible = false;
-        this.dropPlank(p, SECTIONS[i]);
+        this.dropPlank(p, this.sd[i]);
       }
       while(sec.shown < want){
         const p = sec.planks[sec.shown++];
@@ -918,8 +921,8 @@ export class Yard {
         const a = sec.shake * 0.06;
         sec.planks.forEach(p => { p.position.copy(p.userData.home); p.position.x += (Math.random() - 0.5) * a; p.position.y += (Math.random() - 0.5) * a; });
         if(Math.random() < dt * 20){
-          const S = SECTIONS[i];
-          this.parts.emit(S.mid[0] + S.n[0] * 0.1 + (Math.random() - 0.5) * 3, 0.4 + Math.random() * 0.8, S.mid[1] + S.n[1] * 0.1 + (Math.random() - 0.5) * 3,
+          const S = this.sd[i], k = Math.random() - 0.5, y0 = S.y0 || 0;
+          this.parts.emit(S.mid[0] + S.n[0] * 0.1 + (S.b[0] - S.a[0]) * k, y0 + 0.4 + Math.random() * Math.min(0.8, (S.y1 || 1.3) - y0 - 0.4), S.mid[1] + S.n[1] * 0.1 + (S.b[1] - S.a[1]) * k,
             S.n[0] * 2 + (Math.random() - 0.5), 1 + Math.random(), S.n[1] * 2 + (Math.random() - 0.5), 0.8, 0.55, 0.3, 0.07, 0.5, 1, 0);
         }
       }
@@ -931,7 +934,7 @@ export class Yard {
       d.v.y -= 9.8 * dt;
       d.mesh.position.addScaledVector(d.v, dt);
       d.mesh.rotation.x += d.spin.x * dt; d.mesh.rotation.z += d.spin.z * dt;
-      if(d.mesh.position.y < 0.05){ d.mesh.position.y = 0.05; d.v.set(0, 0, 0); d.spin.set(0, 0, 0); d.rest += dt; }
+      if(d.mesh.position.y < (d.floor || 0) + 0.05){ d.mesh.position.y = 0.05; d.v.set(0, 0, 0); d.spin.set(0, 0, 0); d.rest += dt; }
       if(d.rest > 4){ this.scene.remove(d.mesh); d.gone = true; }
     }
     this.debris = this.debris.filter(d => !d.gone);
@@ -1021,8 +1024,11 @@ export class Yard {
     if(this.tv) this.updateTV(dt);
     else this.updateHands(dt);
     this.cam.updateMatrixWorld();
-    if(this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.cam);
+    this.draw(dt);
     this.adapt(dt);
+  }
+  draw(dt){
+    if(this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.cam);
   }
 
   dropPlank(p, S){

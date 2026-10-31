@@ -35,7 +35,20 @@ export const SECTIONS = [
   {name: 'left back',   a: [-HALF, HALF], b: [-HALF, 0], n: [-1, 0]},
   {name: 'left front',  a: [-HALF, 0], b: [-HALF, -HALF], n: [-1, 0]},
 ];
-SECTIONS.forEach(s => { s.mid = [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2]; });
+SECTIONS.forEach(s => { s.mid = [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2]; s.y0 = 0; s.y1 = 1.3; });
+
+/* The Haunted House (web/haunt/) plays the same game in a real room: the
+   sections are portals the players set up with printed markers - holes in
+   the walls, and doorways - each {name, a, b, n, y0, y1}: its two ends on
+   the floor plan, the way out, and its bottom and top. The room has no
+   fence of its own, and the players walk about it for real. */
+export const HAUNT_REACH = 1.25;     // how close to a portal you must stand to repair it
+export function sectionsOf(layout){
+  return layout.portals.map(p => ({name: p.name, a: p.a.slice(), b: p.b.slice(), n: p.n.slice(), y0: p.y0, y1: p.y1,
+    mid: [(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2]}));
+}
+/* How far (x, z) is past a section's opening, into the room (+) or out (-). */
+function inward(sec, x, z){ return -((x - sec.mid[0]) * sec.n[0] + (z - sec.mid[1]) * sec.n[1]); }
 
 export const MONSTERS = {
   //          speed, hp, fence damage a second, radius, height, points, flying height
@@ -97,13 +110,21 @@ export function sideWords(x, z){
 }
 
 /* ---------- the game ---------- */
-export function create(seed){
-  return {
+export function create(seed, layout){
+  const sd = layout ? sectionsOf(layout) : SECTIONS;
+  const S = {
     mode: 'zombie', seed: (seed >>> 0) || 1, t: 0, phase: 'lobby', phaseT: 0, wave: 0,
     players: {}, mons: [], nextId: 1, ev: [], plan: null, boss: null,
-    secs: SECTIONS.map(() => ({hp: SEC_MAX, broken: false, warned: false, hitT: 0})),
-    stats: {kills: 0, waveReached: 0}, why: null,
+    secs: sd.map(() => ({hp: SEC_MAX, broken: false, warned: false, hitT: 0})),
+    stats: {kills: 0, waveReached: 0}, why: null, focus: [],
+    haunt: !!layout, sd, cx: 0, cz: 0,
   };
+  if(layout){
+    S.layout = layout;
+    S.cx = sd.reduce((a, s) => a + s.mid[0], 0) / sd.length;
+    S.cz = sd.reduce((a, s) => a + s.mid[1], 0) / sd.length;
+  }
+  return S;
 }
 
 export function join(S, id, name){
@@ -143,7 +164,11 @@ export function input(S, id, d){
     const l = Math.hypot(a[0], a[1], a[2]);
     p.aim = [a[0] / l, a[1] / l, a[2] / l];
   }
-  if(Number.isFinite(d.x) && Number.isFinite(d.z)){ p.x = clamp(d.x, -ROOM, ROOM); p.z = clamp(d.z, -ROOM, ROOM); }
+  if(Number.isFinite(d.x) && Number.isFinite(d.z)){
+    if(S.haunt){ p.x = clamp(d.x, -30, 30); p.z = clamp(d.z, -30, 30); }
+    else { p.x = clamp(d.x, -ROOM, ROOM); p.z = clamp(d.z, -ROOM, ROOM); }
+  }
+  if(S.haunt && Number.isFinite(d.y)) p.y = clamp(d.y, 0.3, 2.4);
   const w = d.w | 0;
   if(w >= 0 && w < WEAPONS.length && w !== p.w){ p.w = w; p.cd = Math.max(p.cd, 0.35); }
   p.tg = d.tg | 0;
@@ -155,12 +180,13 @@ export function input(S, id, d){
 export function start(S){
   if(S.phase !== 'lobby' && S.phase !== 'over') return;
   const keep = S.players, seed = S.seed;
-  Object.assign(S, create(seed));
+  Object.assign(S, create(seed, S.layout));
   S.players = keep;
   Object.values(S.players).forEach(p => {
     if(p.away){ delete S.players[p.id]; return; }
     const a = p.color * Math.PI / 4;
-    Object.assign(p, {x: Math.sin(a) * 1.2, z: Math.cos(a) * 1.2, cd: 0, firing: false, repairing: false,
+    if(!S.haunt) Object.assign(p, {x: Math.sin(a) * 1.2, z: Math.cos(a) * 1.2});
+    Object.assign(p, {cd: 0, firing: false, repairing: false,
       score: 0, kills: 0, shots: 0, hits: 0, repaired: 0, saves: 0, bosses: 0});
   });
   S.phase = 'count'; S.phaseT = COUNT_TIME;
@@ -210,6 +236,13 @@ function planWave(S){
     groups.push(g);
   }
   S.plan = {groups, gap: Math.max(2.5, 6 - w * 0.25), next: 2, sent: 0, maxAlive: Math.round((6 + w * 1.3) * d.crowd)};
+  if(S.haunt){
+    // a wave comes at two or three of the portals, not all of them: somewhere
+    // to stand, and somewhere to run to. Not the same ones twice running.
+    const n = S.sd.length, k = Math.min(n, w === 1 ? 1 : w < 4 ? 2 : 3);
+    const order = S.sd.map((_, i) => [i, rng(S) + (S.focus.indexOf(i) >= 0 ? 0.6 : 0)]).sort((a, b) => a[1] - b[1]);
+    S.focus = order.slice(0, k).map(o => o[0]);
+  }
 }
 
 function startWave(S){
@@ -218,6 +251,7 @@ function startWave(S){
   S.stats.waveReached = S.wave;
   planWave(S);
   S.ev.push(['wave', S.wave, isBossWave(S.wave) ? 1 : 0]);
+  if(S.haunt) S.ev.push(['focus'].concat(S.focus));
   if(isBossWave(S.wave)) spawnWitch(S);
 }
 
@@ -227,23 +261,31 @@ function spawnAngle(S){
   return rr(S, -Math.PI, Math.PI);
 }
 
-function nearestSection(x, z){
+function nearestSection(S, x, z){
   let best = 0, bd = Infinity;
-  SECTIONS.forEach((s, i) => { const d = Math.hypot(x - s.mid[0], z - s.mid[1]); if(d < bd){ bd = d; best = i; } });
+  S.sd.forEach((s, i) => { const d = Math.hypot(x - s.mid[0], z - s.mid[1]); if(d < bd){ bd = d; best = i; } });
   return best;
+}
+
+/* Somewhere out beyond a portal, roughly the way it faces. */
+function beyond(S, i, r, spread){
+  const s = S.sd[i], a = rr(S, -spread, spread), c = Math.cos(a), sn = Math.sin(a);
+  const dx = s.n[0] * c - s.n[1] * sn, dz = s.n[0] * sn + s.n[1] * c;
+  return [s.mid[0] + dx * r, s.mid[1] + dz * r];
 }
 
 export function newMonster(S, type, x, z, extra){
   const T = MONSTERS[type], d = difficulty(S);
   const hp = Math.max(1, Math.round(T.hp * (type === 'witch' ? 1 + 0.25 * Math.floor(S.wave / 5 - 1) : d.hp)));
   const m = Object.assign({id: S.nextId++, type, x, z, y: T.fly, vx: 0, vz: 0, hp, hpMax: hp,
-    st: 'walk', sec: nearestSection(x, z), t: 0, climbT: 0, face: Math.atan2(-x, -z), knock: 0,
+    st: 'walk', sec: nearestSection(S, x, z), t: 0, climbT: 0, face: Math.atan2(-x, -z), knock: 0,
     off: rr(S, -1, 1), wob: rr(S, 0, 6.28)}, extra || {});
   S.mons.push(m);
   return m;
 }
 
 function spawnGroup(S, g){
+  if(S.haunt) return spawnAtPortal(S, g);
   const a = spawnAngle(S);
   g.forEach((type, i) => {
     const aa = a + (i ? rr(S, -0.25, 0.25) : 0), r = rr(S, SPAWN_R[0], SPAWN_R[1]);
@@ -254,7 +296,25 @@ function spawnGroup(S, g){
   });
 }
 
+function spawnAtPortal(S, g){
+  const sec = S.focus[Math.floor(rng(S) * S.focus.length)] | 0, s = S.sd[sec];
+  const base = beyond(S, sec, rr(S, 20, 26), 0.45);
+  g.forEach((type, i) => {
+    const x = base[0] + (i ? rr(S, -2, 2) : 0), z = base[1] + (i ? rr(S, -2, 2) : 0);
+    if(type === 'bats'){
+      for(let k = 0; k < 5; k++) newMonster(S, 'bat', x + rr(S, -2, 2), z + rr(S, -2, 2), {y: rr(S, 2, 3.4), sec});
+    } else newMonster(S, type, x, z, type === 'ghost' ? {sec, y: (s.y0 + s.y1) / 2} : {sec});
+  });
+}
+
 function spawnWitch(S){
+  if(S.haunt){
+    const a = rr(S, -Math.PI, Math.PI);
+    const w = newMonster(S, 'witch', S.cx + Math.sin(a) * 40, S.cz - Math.cos(a) * 40, {ang: a, dir: rng(S) < 0.5 ? 1 : -1, bombT: 6, summonT: 10, st: 'in'});
+    S.boss = w.id;
+    S.ev.push(['witch']);
+    return;
+  }
   const a = rr(S, -Math.PI, Math.PI);
   const w = newMonster(S, 'witch', Math.sin(a) * 40, -Math.cos(a) * 40, {ang: a, dir: rng(S) < 0.5 ? 1 : -1, bombT: 6, summonT: 10, st: 'in'});
   S.boss = w.id;
@@ -277,9 +337,10 @@ function monsterStep(S, m, dt, d){
   const sp = T.speed * d.speed;
   if(m.knock > 0){
     // knocked back by a shot: pushed outwards, briefly
-    const l = Math.hypot(m.x, m.z) || 1;
     const k = Math.min(m.knock, dt * 6);
-    m.x += m.x / l * k; m.z += m.z / l * k; m.knock -= k;
+    if(S.haunt){ const n = S.sd[m.sec].n; m.x += n[0] * k; m.z += n[1] * k; }
+    else { const l = Math.hypot(m.x, m.z) || 1; m.x += m.x / l * k; m.z += m.z / l * k; }
+    m.knock -= k;
     if(m.st === 'attack') m.st = 'walk';
     return;
   }
@@ -292,10 +353,26 @@ function monsterStep(S, m, dt, d){
     if(k >= 1){
       m.dead = true; m.gone = true;
       damageSection(S, m.sec, 25);
-      damageSection(S, (m.sec + 1) % 8, 8);
-      damageSection(S, (m.sec + 7) % 8, 8);
+      if(!S.haunt){
+        damageSection(S, (m.sec + 1) % 8, 8);
+        damageSection(S, (m.sec + 7) % 8, 8);
+      }
       S.ev.push(['blast', r1(m.tx), r1(m.tz), m.sec]);
     }
+    return;
+  }
+  if(m.type === 'ghost' && S.haunt){
+    // drifts in through its portal, boards or no boards
+    const sec = S.sd[m.sec], inn = inward(sec, m.x, m.z);
+    const tx = sec.mid[0] - sec.n[0] * 1.5, tz = sec.mid[1] - sec.n[1] * 1.5;
+    const dx = tx - m.x, dz = tz - m.z, l = Math.hypot(dx, dz) || 1;
+    m.vx = dx / l * sp; m.vz = dz / l * sp;
+    m.x += m.vx * dt; m.z += m.vz * dt;
+    m.face = Math.atan2(m.vx, m.vz);
+    const cy = (sec.y0 + sec.y1) / 2 - 0.4;
+    m.y += (Math.max(0.2, cy) - m.y) * Math.min(1, dt * 0.8);
+    m.y += Math.sin(m.t * 2 + m.wob) * 0.25 * dt;
+    if(inn > 0.3) getsIn(S, m);
     return;
   }
   if(m.type === 'ghost'){
@@ -308,7 +385,7 @@ function monsterStep(S, m, dt, d){
     if(inside(m.x, m.z, 0.3)) getsIn(S, m);
     return;
   }
-  const sec = SECTIONS[m.sec], ss = S.secs[m.sec];
+  const sec = S.sd[m.sec], ss = S.secs[m.sec];
   // where it is heading: a spot just outside its section (spread along it)
   const along = 0.5 + m.off * 0.32;
   const tx = sec.a[0] + (sec.b[0] - sec.a[0]) * along + sec.n[0] * (T.r + 0.35);
@@ -321,6 +398,8 @@ function monsterStep(S, m, dt, d){
       dx += Math.cos(m.t * 3 + m.wob) * dist * 0.25;
       dz += Math.sin(m.t * 3 + m.wob) * dist * 0.25;
       m.y = T.fly + Math.sin(m.t * 4 + m.wob) * 0.6;
+      // in a house, they come in low, at the opening
+      if(S.haunt) m.y += ((sec.y0 + sec.y1) / 2 - T.fly) * clamp(1 - (dist - 2) / 6, 0, 1);
     }
     const l = Math.hypot(dx, dz) || 1;
     const want = Math.min(sp, dist * 2);
@@ -332,7 +411,7 @@ function monsterStep(S, m, dt, d){
   } else if(m.st === 'attack'){
     m.face = Math.atan2(-sec.n[0], -sec.n[1]);
     m.vx = m.vz = 0;
-    if(m.type === 'bat') m.y = 1.2 + Math.sin(m.t * 8 + m.wob) * 0.3;
+    if(m.type === 'bat') m.y = (S.haunt ? (sec.y0 + sec.y1) / 2 : 1.2) + Math.sin(m.t * 8 + m.wob) * 0.3;
     if(ss.broken){ m.st = 'climb'; m.climbT = 0; S.ev.push(['climb', m.id, m.sec]); }
     else damageSection(S, m.sec, T.dps * d.dps * dt);
   } else if(m.st === 'climb'){
@@ -343,6 +422,8 @@ function monsterStep(S, m, dt, d){
     const k = m.climbT / need;
     m.x = tx - sec.n[0] * (T.r + 0.35) * 2 * k;
     m.z = tz - sec.n[1] * (T.r + 0.35) * 2 * k;
+    // over the sill of a window
+    if(S.haunt && !T.fly) m.y = sec.y0 * Math.min(1, k * 2.5);
     if(k >= 1) getsIn(S, m);
   }
 }
@@ -350,35 +431,38 @@ function monsterStep(S, m, dt, d){
 function getsIn(S, m){
   if(S.phase === 'over') return;
   S.phase = 'over'; S.phaseT = 0;
-  S.why = {type: m.type, sec: m.type === 'ghost' ? nearestSection(m.x, m.z) : m.sec};
+  S.why = {type: m.type, sec: m.type === 'ghost' && !S.haunt ? nearestSection(S, m.x, m.z) : m.sec};
   S.ev.push(['over', S.wave, m.type, S.why.sec, m.id]);
 }
 
 function witchStep(S, m, dt){
-  // sweeps in, then circles the bunker, dropping pumpkin bombs and raising skeletons
-  const R = 15 + Math.sin(m.t * 0.4) * 3;
+  // sweeps in, then circles the bunker, dropping pumpkin bombs and raising skeletons.
+  // Over a house she circles tight and low, so she is seen through the hole
+  // she tears in the ceiling.
+  const cx = S.cx, cz = S.cz;
+  const R = S.haunt ? 5 + Math.sin(m.t * 0.4) * 1.2 : 15 + Math.sin(m.t * 0.4) * 3;
   if(m.st === 'in'){
-    const l = Math.hypot(m.x, m.z);
-    m.x -= m.x / l * 8 * dt; m.z -= m.z / l * 8 * dt;
-    if(l < R + 1){ m.st = 'circle'; m.ang = Math.atan2(m.x, -m.z); }
+    const ox = m.x - cx, oz = m.z - cz, l = Math.hypot(ox, oz);
+    m.x -= ox / l * 8 * dt; m.z -= oz / l * 8 * dt;
+    if(l < R + 1){ m.st = 'circle'; m.ang = Math.atan2(ox, -oz); }
   } else {
-    m.ang += m.dir * MONSTERS.witch.speed / R * dt;
-    const nx = Math.sin(m.ang) * R, nz = -Math.cos(m.ang) * R;
+    m.ang += m.dir * MONSTERS.witch.speed / R * dt * (S.haunt ? 0.6 : 1);
+    const nx = cx + Math.sin(m.ang) * R, nz = cz - Math.cos(m.ang) * R;
     m.vx = (nx - m.x) / dt; m.vz = (nz - m.z) / dt;
     m.x = nx; m.z = nz;
   }
-  m.y = MONSTERS.witch.fly + Math.sin(m.t * 1.3) * 1.2;
-  m.face = Math.atan2(m.vx || -m.x, m.vz || -m.z);
+  m.y = (S.haunt ? 6.5 : MONSTERS.witch.fly) + Math.sin(m.t * 1.3) * (S.haunt ? 0.6 : 1.2);
+  m.face = Math.atan2(m.vx || cx - m.x, m.vz || cz - m.z);
   if(m.st !== 'circle') return;
   m.bombT -= dt; m.summonT -= dt;
   if(m.bombT <= 0){
     // the weakest section near her gets it
     let best = 0, bv = Infinity;
-    SECTIONS.forEach((s, i) => {
+    S.sd.forEach((s, i) => {
       const v = Math.hypot(m.x - s.mid[0], m.z - s.mid[1]) + (S.secs[i].broken ? 99 : S.secs[i].hp * 0.05);
       if(v < bv){ bv = v; best = i; }
     });
-    const s = SECTIONS[best];
+    const s = S.sd[best];
     newMonster(S, 'bomb', m.x, m.z, {y: m.y, y0: m.y, x0: m.x, z0: m.z, tx: s.mid[0] + s.n[0] * 0.4, tz: s.mid[1] + s.n[1] * 0.4,
       fall: 2.4, sec: best, st: 'fall'});
     S.ev.push(['bomb', best]);
@@ -386,6 +470,11 @@ function witchStep(S, m, dt){
   }
   if(m.summonT <= 0){
     for(let i = 0; i < 3; i++){
+      if(S.haunt){
+        const sec = S.focus.length ? S.focus[Math.floor(rng(S) * S.focus.length)] : 0, p = beyond(S, sec, rr(S, 16, 20), 0.4);
+        newMonster(S, 'skeleton', p[0], p[1], {sec});
+        continue;
+      }
       const a = m.ang + rr(S, -0.4, 0.4);
       newMonster(S, 'skeleton', Math.sin(a) * 24, -Math.cos(a) * 24);
     }
@@ -463,7 +552,7 @@ function fire(S, p){
   const W = WEAPONS[p.w];
   p.cd = W.cool;
   p.shots++;
-  const ox = p.x, oy = EYE - 0.1, oz = p.z;
+  const ox = p.x, oy = (S.haunt && p.y ? p.y : EYE) - 0.1, oz = p.z;
   const hits = [];
   let landed = false;
   for(let k = 0; k < W.pellets; k++){
@@ -502,7 +591,8 @@ function kill(S, m, p){
   const T = MONSTERS[m.type];
   if(p){
     p.score += T.pts; p.kills++;
-    if(m.st === 'climb' || (m.type === 'ghost' && inside(m.x, m.z, -2))) { p.saves++; p.score += 100; }
+    const close = m.type === 'ghost' && (S.haunt ? inward(S.sd[m.sec], m.x, m.z) > -2 : inside(m.x, m.z, -2));
+    if(m.st === 'climb' || close) { p.saves++; p.score += 100; }
     if(m.type === 'witch') p.bosses++;
   }
   S.stats.kills++;
@@ -516,8 +606,8 @@ function playerStep(S, p, dt){
   if(p.away) return;
   if(p.repairing){
     // the section this player is standing at, if it needs it
-    let best = -1, bd = REPAIR_REACH;
-    SECTIONS.forEach((s, i) => { const d = toSection(s, p.x, p.z).d; if(d < bd && S.secs[i].hp < SEC_MAX){ bd = d; best = i; } });
+    let best = -1, bd = S.haunt ? HAUNT_REACH : REPAIR_REACH;
+    S.sd.forEach((s, i) => { const d = toSection(s, p.x, p.z).d; if(d < bd && S.secs[i].hp < SEC_MAX){ bd = d; best = i; } });
     if(best >= 0 && S.phase !== 'over'){
       const s = S.secs[best], add = Math.min(REPAIR_RATE * dt, SEC_MAX - s.hp);
       s.hp += add; p.repaired += add; p.score += add * 0.5;
@@ -578,7 +668,7 @@ export function snap(S){
     w: p.w, f: p.firing ? 1 : 0, r: p.repairing ? 1 : 0, fx: p.fixing >= 0 ? p.fixing : -1, zm: p.zoom ? 1 : 0, aw: p.away ? 1 : 0,
     s: Math.round(p.score), k: p.kills, sh: p.shots, hi: p.hits, rp: Math.round(p.repaired), sv: p.saves, bs: p.bosses,
   }));
-  const out = {t: 's', mode: 'zombie', ph: S.phase, pt: r1(S.phaseT), w: S.wave,
+  const out = {t: 's', mode: S.haunt ? 'haunt' : 'zombie', foc: S.focus, ph: S.phase, pt: r1(S.phaseT), w: S.wave,
     sec: S.secs.map(s => s.broken ? -1 : Math.round(s.hp)), hit: S.secs.map(s => s.hitT > 0 ? 1 : 0),
     m, pl, ev: S.ev, boss: S.boss || 0, why: S.why};
   S.ev = [];

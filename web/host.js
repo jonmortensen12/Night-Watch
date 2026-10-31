@@ -19,8 +19,8 @@
    lobby picks one; both have the same create / join / step / snap shape. */
 import * as NW from './sim.js';
 import * as ZB from './zsim.js';
-const GAMES = {space: NW, zombie: ZB};
-const THEME0 = {space: 'nightwatch', zombie: 'danse'};
+const GAMES = {space: NW, zombie: ZB, haunt: ZB};
+const THEME0 = {space: 'nightwatch', zombie: 'danse', haunt: 'danse'};
 
 export const PROTO = NW.PROTO;
 export const PROTO_MIN = 1;
@@ -36,17 +36,26 @@ function loadSave(){
   // the first build kept one record and one theme, for space
   const out = {games: s.games || 0, mode: s.mode === 'zombie' ? 'zombie' : 'space',
     themes: Object.assign({}, THEME0, s.themes || {}),
-    bests: Object.assign({space: {best: s.best || 0, bestScore: s.bestScore || 0}, zombie: {best: 0, bestScore: 0}}, s.bests || {})};
+    bests: Object.assign({space: {best: s.best || 0, bestScore: s.bestScore || 0}, zombie: {best: 0, bestScore: 0}, haunt: {best: 0, bestScore: 0}}, s.bests || {})};
   if(s.theme && !s.themes) out.themes.space = s.theme;
   return out;
 }
 
 /* opts: {tv: bool (this host is a TV - every phone is a gunner),
-          onSnap(snap) (this device's own screen), onRoom(info), onError(msg)} */
+          onSnap(snap) (this device's own screen), onRoom(info), onError(msg)}
+   and for the Haunted House, which has one game, a printed room code and a
+   room plan: {mode: 'haunt', code, layout, onTaken() (somebody else holds
+   the code), onData(person, msg, api) (messages the host does not know),
+   onHello(person, api), restore (a game to carry on, from the host before)} */
 export function createHost(opts){
   const save = loadSave();
-  let mode = save.mode, G = GAMES[mode];
-  let S = G.create((Math.random() * 2 ** 32) >>> 0);
+  const fixedMode = opts.mode || null;
+  let mode = fixedMode || save.mode, G = GAMES[mode];
+  let layout = opts.layout || null;
+  const fresh = () => G.create((Math.random() * 2 ** 32) >>> 0, mode === 'haunt' ? layout : undefined);
+  let S = opts.restore || fresh();
+  if(opts.restore) Object.values(S.players).forEach(p => { p.away = true; p.firing = false; p.repairing = false; });
+  let joins = 0;
   const people = {};        // dev id -> {id, name, role, conn, seen, gone, ready}
   const room = {code: null, status: 'Opening the room...', tv: !!opts.tv};
   let themePicked = false;
@@ -60,11 +69,12 @@ export function createHost(opts){
       open: code => { room.code = code; room.status = ''; roomDirty = true; info(); },
       conn: c => wire(c),
       error: msg => {
+        if(msg === 'taken' && opts.onTaken){ room.status = 'taken'; info(); opts.onTaken(); return; }
         room.status = msg + ' Retrying...';
         room.code = null; info();
-        setTimeout(() => { if(!room.code) open(); }, 4000);
+        setTimeout(() => { if(!room.code && !dead) open(); }, 4000);
       }
-    });
+    }, opts.code);
   }
 
   function send(p, m){ if(p && p.conn){ try { p.conn.send(m); } catch(e){} } }
@@ -77,7 +87,7 @@ export function createHost(opts){
         id = String(d.dev || c.peer).slice(0, 40);
         const old = people[id];
         if(old && old.conn && old.conn !== c){ try { old.conn.close(); } catch(e){} }
-        const p = old || {id, ready: false};
+        const p = old || {id, ready: false, j: ++joins};
         p.name = cleanName(d.name) || p.name || 'Gunner';
         p.role = d.role === 'watch' ? 'watch' : 'player';
         p.conn = c; p.lastConn = c; p.gone = 0; p.seen = performance.now();
@@ -87,6 +97,7 @@ export function createHost(opts){
           const pl = G.join(S, id, p.name);
           send(p, {t: 'you', id, c: pl.color});
         }
+        if(opts.onHello) opts.onHello(p, api);
         roomDirty = true;
         return;
       }
@@ -132,12 +143,12 @@ export function createHost(opts){
       if(S.phase === 'over' && S.phaseT > 2.5){ G.toLobby(S); Object.values(people).forEach(q => { q.ready = false; }); roomDirty = true; }
     } else if(d.t === 'theme'){
       if(typeof d.key === 'string' && d.key.length < 24){ save.themes[mode] = d.key; themePicked = true; persist(); roomDirty = true; }
-    }
+    } else if(opts.onData) opts.onData(p, d, api);
   }
 
   /* Between games only. Everybody keeps their colour. */
   function setMode(m){
-    if(m === mode || (S.phase !== 'lobby' && S.phase !== 'over')) return;
+    if(fixedMode || m === mode || (S.phase !== 'lobby' && S.phase !== 'over')) return;
     const keep = Object.values(S.players).filter(q => !q.away).sort((a, b) => a.color - b.color);
     mode = m; G = GAMES[m];
     save.mode = m; persist();
@@ -163,6 +174,7 @@ export function createHost(opts){
   function go(){
     if(S.phase !== 'lobby' && S.phase !== 'over') return;
     if(!players().length) return;
+    if(mode === 'haunt' && !layout) return;          // no room set up yet
     G.start(S);
     themePicked = false;
     Object.values(people).forEach(p => { p.ready = false; });
@@ -186,7 +198,7 @@ export function createHost(opts){
       best: b.best, bestScore: b.bestScore,
       people: Object.values(people).map(p => {
         const pl = S.players[p.id];
-        return {id: p.id, n: p.name, role: p.role, c: pl ? pl.color : -1, r: p.ready ? 1 : 0, w: p.conn ? 0 : 1,
+        return {id: p.id, n: p.name, role: p.role, c: pl ? pl.color : -1, r: p.ready ? 1 : 0, w: p.conn ? 0 : 1, j: p.j,
           net: p.conn && p.conn.peer === 'local' ? 'host' : p.net || ''};
       })};
   }
@@ -244,12 +256,28 @@ export function createHost(opts){
     return {send: toHost};
   }
 
+  /* The Haunted House: a new room plan, between games only. */
+  function setLayout(L){
+    if(S.phase !== 'lobby' && S.phase !== 'over') return false;
+    layout = L;
+    const keep = Object.values(S.players).filter(q => !q.away).sort((a, b) => a.color - b.color);
+    S = fresh();
+    keep.forEach(q => G.join(S, q.id, q.name));
+    Object.values(people).forEach(p => { p.ready = false; });
+    roomDirty = true;
+    return true;
+  }
+  function broadcast(m){ Object.values(people).forEach(p => send(p, m)); }
+
+  let dead = false;
   open();
   const timer = setInterval(tick, 1000 / 60);
-  return {
-    get S(){ return S; }, get mode(){ return mode; }, setMode, room, local, go, roomInfo,
+  const api = {
+    get S(){ return S; }, get mode(){ return mode; }, get layout(){ return layout; }, setMode, setLayout, room, local, go, roomInfo,
+    send, broadcast, people: () => people,
     // the TV's own keyboard
     key: k => { if(k === 'go') go(); },
-    destroy: () => { clearInterval(timer); if(handle) handle.destroy(); },
+    destroy: () => { dead = true; clearInterval(timer); if(handle) handle.destroy(); },
   };
+  return api;
 }

@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0610">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Night Watch: Haunted House</title>
+<meta property="og:title" content="Night Watch: Haunted House">
+<meta property="og:description" content="Your own living room, and the monsters breaking in through the walls. Printed markers, phones, friends.">
+<meta property="og:image" content="../og.png">
+<link rel="icon" href="../icon-192.png">
+<script>
+/* Never zoom (see play.html: Brave let a pinch through mid-game). */
+(function(){
+  var opt = {passive: false};
+  function stop(e){ if(e.cancelable) e.preventDefault(); }
+  document.addEventListener('touchmove', function(e){ if(e.touches.length > 1 || (e.scale && e.scale !== 1)) stop(e); }, opt);
+  document.addEventListener('touchstart', function(e){ if(e.touches.length > 1) stop(e); }, opt);
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(t){ document.addEventListener(t, stop, opt); });
+  document.addEventListener('dblclick', stop, opt);
+  var meta = document.querySelector('meta[name=viewport]'), base = meta.getAttribute('content'), timer = 0;
+  function unzoom(){
+    meta.setAttribute('content', base.replace('maximum-scale=1,', 'maximum-scale=1.01,'));
+    setTimeout(function(){ meta.setAttribute('content', base); }, 80);
+  }
+  if(window.visualViewport) visualViewport.addEventListener('resize', function(){
+    if(visualViewport.scale > 1.02){ clearTimeout(timer); timer = setTimeout(unzoom, 250); }
+  });
+})();
+</script>
+<style>
+:root { --bg:#0b0610; --ink:#f3ecff; --dim:#b3a3cc; --acc:#ff9a3c; --warn:#ff4d6a; --gold:#ffc94d; --ok:#5cff8a; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 16px/1.35 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+#view, #marks { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#view { z-index: 1; }
+#marks { z-index: 2; pointer-events: none; }
+.scr { position: fixed; inset: 0; display: none; z-index: 10; }
+.scr.on { display: flex; }
+button { font: inherit; font-weight: 700; color: var(--ink); background: #251a33; border: 1px solid #5a4378; border-radius: 14px; padding: 14px 18px; cursor: pointer; }
+button:active { transform: scale(0.97); }
+button.big { font-size: 19px; padding: 17px; width: 100%; }
+button.go { background: linear-gradient(180deg, #ff9a3c, #d9561a); border-color: #ffc28a; color: #fff; box-shadow: 0 0 24px #ff7a1a55; }
+button.alt { background: #1a1124; }
+button:disabled { opacity: 0.4; }
+input { font: inherit; font-size: 18px; width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #5a4378; background: #150d1f; color: var(--ink); }
+#codeIn { text-transform: uppercase; letter-spacing: 0.3em; font-weight: 700; text-align: center; }
+label { display: block; color: var(--dim); font-size: 13px; margin: 14px 0 6px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+#start { align-items: center; justify-content: center; padding: 24px; background: radial-gradient(ellipse at 50% 15%, #3a1a4a 0%, #0b0610 70%); overflow-y: auto; touch-action: pan-y; }
+.card { width: 100%; max-width: 420px; }
+h1 { font-size: 38px; letter-spacing: 0.08em; margin: 0 0 4px; text-align: center; font-weight: 900; line-height: 1.05; background: linear-gradient(180deg, #fff, #ffb35c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tag { text-align: center; color: var(--dim); margin: 6px 0 18px; }
+.msg { min-height: 1.4em; color: var(--warn); margin: 10px 0 0; text-align: center; }
+.small { font-size: 13px; color: var(--dim); text-align: center; margin-top: 18px; }
+.small a { color: var(--acc); }
+.setcode { text-align: center; font: 900 30px ui-monospace, monospace; letter-spacing: 0.25em; color: var(--acc); margin: 4px 0 0; }
+
+#top { position: fixed; left: 0; right: 0; top: 0; z-index: 5; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; display: none; gap: 10px; align-items: center; justify-content: space-between; pointer-events: none; text-shadow: 0 1px 4px #000; }
+#wave { font-weight: 800; letter-spacing: 0.08em; font-size: 14px; }
+#score { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 60px; text-align: right; }
+.icon { position: fixed; z-index: 6; width: 52px; height: 52px; border-radius: 50%; padding: 0; display: none; align-items: center; justify-content: center; font-size: 22px; background: #140c1ccc; border: 1px solid #5a4378; }
+#viewBtn { left: 12px; top: calc(40px + env(safe-area-inset-top)); font-size: 12px; width: auto; border-radius: 26px; padding: 0 14px; letter-spacing: 0.05em; }
+#musicBtn { right: 12px; top: calc(40px + env(safe-area-inset-top)); }
+#dot { position: fixed; right: 72px; top: calc(56px + env(safe-area-inset-top)); width: 10px; height: 10px; border-radius: 50%; background: #3cff8a; z-index: 6; box-shadow: 0 0 8px #3cff8a; display: none; }
+#dot.off { background: #ff4d6a; box-shadow: 0 0 8px #ff4d6a; }
+#netTag { position: fixed; right: 88px; top: calc(51px + env(safe-area-inset-top)); z-index: 6; font: 700 11px system-ui; color: #e8dcff; text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap; }
+#banner { position: fixed; left: 0; right: 0; top: 24%; z-index: 7; text-align: center; pointer-events: none; font-weight: 900; font-size: 32px; letter-spacing: 0.1em; text-shadow: 0 0 20px #ff7a1a, 0 2px 4px #000; opacity: 0; transition: opacity 0.3s; }
+#banner small { display: block; font-size: 16px; letter-spacing: 0.04em; font-weight: 700; color: var(--gold); margin-top: 6px; text-shadow: 0 2px 4px #000; }
+#banner.on { opacity: 1; }
+#callout { position: fixed; left: 0; right: 0; bottom: calc(130px + env(safe-area-inset-bottom)); z-index: 7; text-align: center; pointer-events: none; font-weight: 800; font-size: 18px; color: #ff9ad5; text-shadow: 0 2px 6px #000; padding: 0 12px; }
+#toast { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); z-index: 8; background: #140c1cee; border: 1px solid #5a4378; padding: 10px 16px; border-radius: 12px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+#toast.on { opacity: 1; }
+#note { position: fixed; left: 0; right: 0; top: calc(96px + env(safe-area-inset-top)); z-index: 9; text-align: center; pointer-events: none; }
+#note span { background: #ff4d6add; padding: 6px 12px; border-radius: 10px; font-weight: 700; pointer-events: auto; }
+#lost { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 6; background: #140c1cdd; border: 1px dashed #ff9a3c; color: #ffd0a0; padding: 12px 16px; border-radius: 14px; font-weight: 700; text-align: center; pointer-events: none; display: none; max-width: 80%; }
+
+/* the survey */
+#surveyP { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9; padding: 14px 14px calc(16px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, #0b061000, #0b0610ee 30%); display: none; }
+#surveyP.on { display: block; }
+#surveyP h2 { margin: 0 0 4px; font-size: 20px; }
+#surveyP p { margin: 0 0 10px; color: var(--dim); font-size: 14px; }
+#found { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; min-height: 30px; }
+#found span { padding: 5px 10px; border-radius: 16px; border: 1px solid #5a4378; font-weight: 700; font-size: 13px; background: #1a1124; }
+#found span.ok { border-color: var(--ok); color: var(--ok); }
+
+/* the lobby and the results */
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9; max-height: 74%; overflow-y: auto; touch-action: pan-y; background: linear-gradient(180deg, #120a1aee, #0b0610f8); border-top: 1px solid #5a4378; border-radius: 22px 22px 0 0; padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); display: none; }
+.sheet.on { display: block; }
+.sheet h2 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.04em; }
+.sheet .sub { color: var(--dim); margin: 0 0 12px; font-size: 14px; }
+.crew { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.chip { padding: 6px 10px; border-radius: 20px; background: #ffffff10; border: 1px solid; font-weight: 700; font-size: 14px; }
+.chip.ready::after { content: ' ✓'; }
+.chip.away { opacity: 0.45; }
+.chip small { font-weight: 600; opacity: 0.75; margin-left: 4px; }
+.row { display: flex; gap: 8px; margin-top: 10px; }
+.row > * { flex: 1; }
+.opts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.opts button { padding: 8px 10px; font-size: 13px; flex: 1; min-width: 30%; }
+.opts button.sel { background: #5a2a7a; border-color: #d0a0ff; }
+#roomInfo { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+#qrBox { text-align: center; margin: 10px 0 4px; display: none; }
+#qrBox canvas { width: 140px; height: 140px; background: #fff; border-radius: 10px; padding: 6px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+td { padding: 6px 4px; border-bottom: 1px solid #ffffff12; font-size: 14px; }
+td.n { font-weight: 800; }
+td.r { text-align: right; }
+.award { color: var(--gold); font-size: 12px; font-weight: 700; display: block; }
+.record { color: var(--gold); font-weight: 900; letter-spacing: 0.08em; }
+</style>
+<script type="importmap">{"imports": {"three": "../lib/three.module.min.js"}}</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<canvas id="marks"></canvas>
+
+<div id="start" class="scr on">
+  <div class="card">
+    <h1>HAUNTED<br>HOUSE</h1>
+    <p class="tag">Your own room. The monsters are breaking in through the walls.</p>
+    <div id="haveSet" style="display:none">
+      <div class="setcode" id="setShow"></div>
+      <p class="small" style="margin-top:4px">the marker set you scanned</p>
+    </div>
+    <form id="enterForm" autocomplete="off">
+      <label for="nameIn">Your name</label>
+      <input id="nameIn" maxlength="14" placeholder="Name" enterkeyhint="next">
+      <div id="codeRow">
+        <label for="codeIn">Set code (on the markers' first page)</label>
+        <input id="codeIn" maxlength="6" placeholder="ABCDEF" autocapitalize="characters" enterkeyhint="go">
+      </div>
+      <div style="height:14px"></div>
+      <button class="big go" id="enterBtn" type="submit">ENTER THE HOUSE</button>
+    </form>
+    <p class="msg" id="startMsg"></p>
+    <p class="small">No markers yet? <a href="print.html">Print a set</a> - one sheet each, eight or so.<br>The phone's camera finds the markers; allow it when asked.<br>Not in the house? <a href="../play.html">Space and the Bunker</a> need no markers.</p>
+  </div>
+</div>
+
+<div id="top"><span id="wave">LOBBY</span><span id="score">0</span></div>
+<button id="viewBtn" class="icon">📷 AR</button>
+<button id="musicBtn" class="icon">♪</button>
+<div id="dot"></div>
+<div id="netTag"></div>
+<div id="lost"></div>
+<div id="banner"></div>
+<div id="callout"></div>
+<div id="toast"></div>
+<div id="note"></div>
+
+<div id="surveyP">
+  <h2>Setting up the room</h2>
+  <p id="surveyHelp">Stand in the middle of the room. Turn slowly all the way round, pointing at each marker until it turns green - the ones on the floor too.</p>
+  <div id="found"></div>
+  <div class="row"><button class="big alt" id="surveyCancel" style="flex:0.5">CANCEL</button><button class="big go" id="surveyDone" disabled>DONE</button></div>
+</div>
+
+<div id="lobby" class="sheet">
+  <h2>The Haunted House</h2>
+  <p class="sub" id="lobbySub">Waiting for everybody. Tap READY when you are.</p>
+  <div class="crew" id="crew"></div>
+  <label>The room</label>
+  <p id="roomInfo"></p>
+  <div class="row" style="margin-top:4px"><button class="alt" id="setupBtn">SET UP THE ROOM</button></div>
+  <label>See it</label>
+  <div class="opts" id="viewOpts">
+    <button data-v="ar">📷 Camera (AR)</button>
+    <button data-v="vr">🌙 Full immersion</button>
+  </div>
+  <label>Music</label>
+  <div class="opts" id="themes"></div>
+  <div class="row"><button class="big go" id="readyBtn">READY</button></div>
+  <div class="row"><button class="big alt" id="startNow">START NOW</button></div>
+  <div id="qrBox"><canvas id="qr" width="280" height="280"></canvas><div class="sub">Friends scan this, or the first page of the markers</div></div>
+  <p class="small" id="record"></p>
+</div>
+
+<div id="over" class="sheet">
+  <h2 id="overTitle">They got in!</h2>
+  <p class="sub" id="overSub"></p>
+  <table id="results"></table>
+  <div class="row"><button class="big alt" id="lobbyBtn" disabled style="flex:0.6">LOBBY</button><button class="big go" id="againBtn" disabled>PLAY AGAIN</button></div>
+</div>
+
+<script src="../net.js"></script>
+<script src="../qr.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import * as SND from '../sound.js';
+import {createHost, PROTO} from '../host.js';
+import {createZombiePhone} from '../zombie-phone.js';
+import {awards, MONSTERS, COLORS, sectionsOf, HAUNT_REACH} from '../zsim.js';
+import {Detector} from './markers.js';
+import {Survey, Locator, Focal, makeLayout} from './room.js';
+import {Haunt} from './view.js';
+
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const SIM = params.get('sim') === '1';
+const isLocal = NWNet.isLocal();
+const low = params.get('q') === 'low';
+function box(){ return isLocal ? sessionStorage : localStorage; }
+function store(k, v){ try { box().setItem(k, v); } catch(e){} }
+function recall(k){ try { return box().getItem(k); } catch(e){ return null; } }
+let devId = recall('nwatch_dev');
+if(!devId){ devId = 'd' + Math.random().toString(36).slice(2, 12); store('nwatch_dev', devId); }
+
+/* ---------- which set of markers ---------- */
+const fromHash = (location.hash || '').replace('#', '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+let SET = fromHash.length === 6 ? fromHash : '';
+if(SET){ $('haveSet').style.display = ''; $('setShow').textContent = SET; $('codeRow').style.display = 'none'; }
+else $('codeIn').value = recall('nwatch_set') || '';
+$('nameIn').value = recall('nwatch_name') || '';
+const layoutKey = () => 'nwatch_haunt_' + SET;
+function savedLayout(){ try { return JSON.parse(recall(layoutKey()) || 'null'); } catch(e){ return null; } }
+let layout = null;
+
+/* ---------- the camera ---------- */
+let simcam = null;
+const grabC = document.createElement('canvas'), grabG = grabC.getContext('2d', {willReadFrequently: true});
+let src = null;            // {el, vw, vh}: the picture, and its size
+let det = null, focal = null, gray = null, detScale = 1;
+async function startCamera(){
+  if(SIM){
+    const {createSimCam} = await import('./simcam.js');
+    simcam = createSimCam({sensorYaw: +(params.get('syaw') || 0.6)});
+    simcam.render();
+    src = {el: simcam.canvas, vw: simcam.w, vh: simcam.h};
+  } else {
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser has no camera access here (it needs https).');
+    const stream = await navigator.mediaDevices.getUserMedia({audio: false,
+      video: {facingMode: {ideal: 'environment'}, width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 30}}});
+    const v = document.createElement('video');
+    v.playsInline = true; v.muted = true; v.setAttribute('playsinline', '');
+    v.srcObject = stream;
+    await v.play();
+    src = {el: v, vw: v.videoWidth, vh: v.videoHeight, stream};
+  }
+  sizeCamera();
+  view.setSource(src.el);
+}
+function sizeCamera(){
+  const vw = src.el.videoWidth || src.vw, vh = src.el.videoHeight || src.vh;
+  if(!vw || !vh) return;
+  src.vw = vw; src.vh = vh;
+  detScale = Math.min(1, 640 / Math.max(vw, vh));
+  const w = Math.round(vw * detScale), h = Math.round(vh * detScale);
+  if(grabC.width !== w || grabC.height !== h){
+    grabC.width = w; grabC.height = h;
+    gray = new Uint8Array(w * h);
+    if(det) det.resize(w, h); else det = new Detector(w, h);
+    let kept = null;
+    try { kept = JSON.parse(localStorage.getItem('nwatch_focal') || 'null'); } catch(e){}
+    focal = new Focal(w, h, SIM ? null : kept);
+  }
+}
+function grab(){
+  grabG.drawImage(src.el, 0, 0, grabC.width, grabC.height);
+  const d = grabG.getImageData(0, 0, grabC.width, grabC.height).data;
+  for(let i = 0, j = 0; i < gray.length; i++, j += 4) gray[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8;
+  return gray;
+}
+
+/* ---------- which way the phone points ----------
+   As play.html: deviceorientation turned into a camera. Its yaw starts
+   wherever the phone happened to point; the markers say how far round
+   that is from the room (the Locator's yaw). */
+const Y = new THREE.Vector3(0, 1, 0), ZEE = new THREE.Vector3(0, 0, 1);
+const sensorQ = new THREE.Quaternion(), viewQ = new THREE.Quaternion(), yawQ = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const eul = new THREE.Euler(), q0 = new THREE.Quaternion();
+let sensing = false;
+function screenAngle(){ return ((screen.orientation && screen.orientation.angle) || window.orientation || 0) * Math.PI / 180; }
+addEventListener('deviceorientation', e => {
+  if(e.alpha == null || SIM) return;
+  sensing = true;
+  const D = Math.PI / 180;
+  eul.set(e.beta * D, e.alpha * D, -e.gamma * D, 'YXZ');
+  sensorQ.setFromEuler(eul);
+  sensorQ.multiply(q1);
+  sensorQ.multiply(q0.setFromAxisAngle(ZEE, -screenAngle()));
+});
+// walking, for full immersion's fade
+let accel = 0;
+addEventListener('devicemotion', e => {
+  const a = e.acceleration;
+  if(a && a.x != null) accel = accel * 0.9 + Math.hypot(a.x, a.y, a.z) * 0.1;
+});
+function askMotion(){
+  try {
+    if(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function')
+      return DeviceOrientationEvent.requestPermission().then(r => r === 'granted').catch(() => false);
+  } catch(e){}
+  return Promise.resolve(true);
+}
+const m4 = new THREE.Matrix4();
+function rowMajor(q){
+  m4.makeRotationFromQuaternion(q);
+  const e = m4.elements;
+  return [e[0], e[4], e[8], e[1], e[5], e[9], e[2], e[6], e[10]];
+}
+
+/* ---------- the view and the controls ---------- */
+const view = new Haunt($('view'), {layout: null, low});
+let viewMode = recall('nwatch_haunt_view') === 'vr' ? 'vr' : 'ar';
+view.setView3(viewMode);
+SND.setScale(true);
+let locator = new Locator(null), loc = {P: null, yaw: null, fix: 1e9, seen: []};
+let survey = null;
+const zctl = createZombiePhone({
+  view, sd: [], reach: HAUNT_REACH,
+  where: () => loc.P,
+  tx, SND, banner, toast, callout, buzz,
+  me: () => me.c, isDrag: () => false, look: () => {},
+  onEvent: sharedEvent,
+});
+
+function setLayout(L, from){
+  if(!L || !L.portals) return;
+  layout = L;
+  store(layoutKey(), JSON.stringify(L));
+  view.setLayout(L);
+  zctl.setSections(sectionsOf(L));
+  locator.setLayout(L);
+  drawRoom();
+}
+const saved = savedLayout();
+
+/* ---------- joining: the first phone in hosts; if it goes, the next one does ---------- */
+const ROOM = () => 'haunt-' + SET;
+let conn = null, handle = null, host = null, localLink = null, joined = false, myName = '';
+let me = {c: -1}, S = null, room = null, lastSnap = 0, backup = null, lostAt = 0, tries = 0, backupTimer = null;
+let iAmHost = false;
+
+function enter(){
+  myName = $('nameIn').value.trim().slice(0, 14) || 'Ghostbuster';
+  store('nwatch_name', myName);
+  if(!SET){
+    const c = $('codeIn').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if(c.length !== 6){ $('startMsg').textContent = 'The set code is the six letters on the markers\' first page.'; return; }
+    SET = c;
+  }
+  store('nwatch_set', SET);
+  if(location.hash !== '#' + SET) history.replaceState(null, '', location.pathname + location.search + '#' + SET);
+  layout = savedLayout();
+  if(layout) setLayout(layout);
+  SND.unlock();
+  try {
+    const el = document.documentElement;
+    if(el.requestFullscreen && !matchMedia('(pointer:fine)').matches)
+      el.requestFullscreen({navigationUI: 'hide'}).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait')).catch(() => {});
+  } catch(e){}
+  $('enterBtn').disabled = true;
+  $('startMsg').textContent = 'Opening the camera...';
+  askMotion().then(ok => {
+    if(!ok) toast('Motion sensors were not allowed - the view cannot turn with you');
+  });
+  startCamera().then(() => {
+    $('startMsg').textContent = 'Looking for the game...';
+    connect();
+  }).catch(err => {
+    $('enterBtn').disabled = false;
+    $('startMsg').textContent = 'The camera is needed to find the markers. ' + (err && err.message ? err.message : 'Allow it and try again.');
+  });
+}
+$('enterForm').addEventListener('submit', e => { e.preventDefault(); enter(); });
+
+function connect(){
+  try { if(handle) handle.destroy(); } catch(e){}
+  conn = null;
+  handle = NWNet.join(ROOM(), {
+    timeout: isLocal ? 1500 : 9000,
+    open: c => {
+      conn = c; tries = 0; lostAt = 0;
+      c.on('data', onHost);
+      c.on('close', () => { if(conn === c) lost(); });
+      c.send({t: 'hello', name: myName, dev: devId, proto: PROTO, role: 'player'});
+      lastSnap = performance.now();
+      linked();
+      watchRoute(c);
+    },
+    error: t => {
+      // nobody holds the room: this phone does
+      if(!joined && (t === 'peer-unavailable' || t === 'timeout')) return becomeHost(null);
+      if(joined) return retry();
+      $('enterBtn').disabled = false;
+      $('startMsg').textContent = t === 'library' ? 'Could not load the connection library. This needs internet.' : 'Connection problem: ' + t;
+    }
+  });
+}
+
+function becomeHost(restore){
+  if(host) return;
+  iAmHost = true;
+  const h = host = createHost({
+    mode: 'haunt', code: ROOM(), layout: layout || savedLayout(), restore,
+    onRoom: r => { room = r; drawRoom(); },
+    onTaken: () => {
+      // somebody else got there first: join them
+      h.destroy(); if(host === h){ host = null; localLink = null; iAmHost = false; }
+      clearInterval(backupTimer);
+      setTimeout(() => { if(!host) connect(); }, 300 + Math.random() * 600);
+    },
+    onHello: (p, api) => { if(api.layout) api.send(p, {t: 'layout', L: api.layout}); },
+    onData: (p, d, api) => {
+      if(d.t === 'layout' && okLayout(d.L)){
+        if(api.setLayout(d.L)) api.broadcast({t: 'layout', L: d.L});
+      }
+    },
+  });
+  conn = null;
+  localLink = host.local(myName, devId, onHost);
+  lastSnap = performance.now();
+  $('netTag').textContent = '📱 hosting';
+  clearInterval(backupTimer);
+  // every phone keeps the game, so whoever is next can carry it on
+  backupTimer = setInterval(() => {
+    if(host !== h) return;
+    const copy = Object.assign({}, h.S, {ev: []});
+    h.broadcast({t: 'bk', S: JSON.parse(JSON.stringify(copy))});
+  }, 2000);
+  linked();
+}
+
+function okLayout(L){
+  return L && Array.isArray(L.portals) && L.portals.length >= 1 && L.portals.length <= 16 &&
+    L.portals.every(p => [p.a[0], p.a[1], p.b[0], p.b[1], p.n[0], p.n[1], p.y0, p.y1].every(Number.isFinite)) && L.markers && typeof L.markers === 'object';
+}
+
+function linked(){
+  $('dot').classList.remove('off');
+  note('');
+  if(joined) return;
+  joined = true;
+  $('start').classList.remove('on');
+  ['viewBtn', 'musicBtn', 'dot'].forEach(id => $(id).style.display = 'flex');
+  $('top').style.display = 'flex';
+  keepAwake();
+  musicBtn();
+}
+
+/* The host has gone quiet. The next phone in line (by when it joined)
+   hosts at once, carrying on from the last copy of the game; the others
+   look for it, and take over themselves if nobody turns up. */
+function lost(){
+  if(host || !joined) return;
+  conn = null;
+  $('dot').classList.add('off');
+  $('netTag').textContent = '';
+  zctl.release();
+  lostAt = performance.now();
+  tries = 0;
+  note('The host dropped out - carrying on...');
+  retry();
+}
+function myRank(){
+  if(!room) return 0;
+  const line = room.people.filter(p => p.role === 'player' && !p.w && p.net !== 'host').sort((a, b) => (a.j || 0) - (b.j || 0));
+  const i = line.findIndex(p => p.id === devId);
+  return i < 0 ? line.length : i;
+}
+function retry(){
+  if(host) return;
+  const rank = myRank();
+  if(tries > rank){ note(''); return becomeHost(backup); }
+  tries++;
+  try { if(handle) handle.destroy(); } catch(e){}
+  handle = NWNet.join(ROOM(), {
+    timeout: isLocal ? 1500 : 6000,
+    open: c => {
+      conn = c; tries = 0;
+      c.on('data', onHost);
+      c.on('close', () => { if(conn === c) lost(); });
+      c.send({t: 'hello', name: myName, dev: devId, proto: PROTO, role: 'player'});
+      lastSnap = performance.now();
+      note('');
+      linked();
+      watchRoute(c);
+    },
+    error: () => setTimeout(retry, 600 + Math.random() * 600),
+  });
+}
+
+const NET_LABEL = {wifi: '📶 Wi-Fi', internet: '🌐 Internet', relay: '☁️ Cloudflare relay', local: '', host: '📱 hosting'};
+let netTimer = null;
+function watchRoute(c){
+  clearTimeout(netTimer);
+  let n = 0;
+  (function check(){
+    if(conn !== c) return;
+    NWNet.route(c, k => { if(k){ $('netTag').textContent = NET_LABEL[k] || ''; tx({t: 'net', k}); } });
+    netTimer = setTimeout(check, n++ < 3 ? 1500 : 20000);
+  })();
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible') keepAwake();
+  else zctl.release();
+});
+let wake = null;
+async function keepAwake(){
+  try { if(navigator.wakeLock && !wake){ wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch(e){}
+}
+addEventListener('pagehide', () => { try { if(host) host.destroy(); if(handle) handle.destroy(); } catch(e){} });
+
+function tx(m){
+  if(localLink){ localLink.send(m); return; }
+  if(conn){ try { conn.send(m); } catch(e){} }
+}
+
+/* ---------- what the host says ---------- */
+function onHost(d){
+  if(!d || typeof d !== 'object') return;
+  if(d.t === 'host'){
+    if(d.min > PROTO){ location.reload(); return; }
+  } else if(d.t === 'you'){
+    me.c = d.c; me.id = d.id;
+    view.setMe(d.c);
+    $('wave').style.color = COLORS[d.c];
+  } else if(d.t === 'layout'){
+    if(okLayout(d.L) && JSON.stringify(d.L) !== JSON.stringify(layout)) setLayout(d.L);
+  } else if(d.t === 'bk'){
+    backup = d.S;
+  } else if(d.t === 's'){
+    S = d; lastSnap = performance.now();
+    if(d.ro){ room = d.ro; drawRoom(); }
+    zctl.onSnap(d);
+    view.setMood(d.w || 0, !!d.boss);
+    state();
+  }
+}
+
+/* ---------- the room plan ---------- */
+function startSurvey(){
+  if(S && S.ph !== 'lobby' && S.ph !== 'over'){ toast('Between games'); return; }
+  survey = new Survey();
+  view.showHouse(false);
+  $('surveyP').classList.add('on');
+  $('lobby').classList.remove('on');
+  $('surveyDone').disabled = true;
+  drawFound();
+}
+function endSurvey(keep){
+  if(keep && survey){
+    const L = survey.build({f: focal.f, cx: det.w / 2, cy: det.h / 2});
+    if(!okLayout(L)){ toast('No markers placed yet'); return; }
+    if(L.f){ focal.set(L.f, true); delete L.f; }
+    // this phone's sensors are the room's frame: it knows its own yaw
+    locator = new Locator(L, {yaw: 0});
+    setLayout(L);
+    tx({t: 'layout', L});
+    if(!SIM) try { localStorage.setItem('nwatch_focal', JSON.stringify(focal.keep())); } catch(e){}
+    toast(L.portals.length + (L.portals.length === 1 ? ' way in' : ' ways in') + ' - the room is set');
+  }
+  survey = null;
+  view.showHouse(true);
+  $('surveyP').classList.remove('on');
+}
+$('setupBtn').addEventListener('click', () => { SND.unlock(); startSurvey(); });
+$('surveyCancel').addEventListener('click', () => endSurvey(false));
+$('surveyDone').addEventListener('click', () => endSurvey(true));
+let foundKey = '';
+function drawFound(){
+  const list = survey.list();
+  const key = list.map(m => m.id + (m.ok ? '+' : '-') + m.kind).join(',');
+  if(key === foundKey) return;
+  foundKey = key;
+  $('found').innerHTML = '';
+  for(const m of list){
+    const s = document.createElement('span');
+    s.className = m.ok ? 'ok' : '';
+    s.textContent = (m.kind === 'floor' ? '🚪 ' : m.kind === 'wall' ? '🪟 ' : '') + m.label + (m.ok ? ' ✓' : '');
+    $('found').appendChild(s);
+  }
+  if(!list.length) $('found').innerHTML = '<span>none yet</span>';
+  $('surveyDone').disabled = !list.some(m => m.ok);
+}
+
+/* ---------- the game, as this phone sees it ---------- */
+let phase = 'lobby';
+function myPlayer(){ return S && S.pl ? S.pl.find(p => p.c === me.c) : null; }
+function state(){
+  const p = myPlayer();
+  const was = phase;
+  phase = S.ph;
+  if(p) $('score').textContent = p.s.toLocaleString();
+  $('wave').textContent = phase === 'lobby' ? 'LOBBY' : S.w ? 'WAVE ' + S.w : 'GET READY';
+  $('lobby').classList.toggle('on', phase === 'lobby' && !survey);
+  $('over').classList.toggle('on', phase === 'over');
+  if(phase === 'over' && was !== 'over') results();
+  if(phase === 'over') $('againBtn').disabled = $('lobbyBtn').disabled = S.pt < 2.5;
+  if(phase === 'count') banner(String(Math.ceil(S.pt)), 'Keep them out of the house');
+  else if(phase === 'break') banner('WAVE ' + S.w + ' CLEARED', 'Next wave in ' + Math.ceil(S.pt) + ' - go and fix the boards!');
+  if(survey && phase !== 'lobby' && phase !== 'over') endSurvey(false);
+}
+
+function sharedEvent(ev){
+  const k = ev[0];
+  if(k === 'wave'){ SND.cue('zwave') || SND.sfx('click'); banner('WAVE ' + ev[1], ev[2] ? 'The witch is coming' : ''); }
+  else if(k === 'clear') SND.cue('zclear');
+  else if(k === 'over'){ zctl.release(); SND.cue(S && S.nr ? 'record' : 'zover'); buzz([200, 100, 300]); }
+  else if(k === 'count') SND.cue('count');
+}
+
+let lastBanner = '', bannerT = 0, toastT = 0, calloutT = 0;
+function banner(t, sub){
+  if(lastBanner !== t + sub){ $('banner').innerHTML = t + (sub ? '<small></small>' : ''); if(sub) $('banner').querySelector('small').textContent = sub; lastBanner = t + sub; }
+  $('banner').classList.add('on');
+  bannerT = performance.now() + 1200;
+}
+function toast(t){ $('toast').textContent = t; $('toast').classList.add('on'); toastT = performance.now() + 2000; }
+function note(t){ $('note').innerHTML = t ? '<span></span>' : ''; if(t) $('note').firstChild.textContent = t; }
+function buzz(p){ try { if(navigator.vibrate) navigator.vibrate(p); } catch(e){} }
+function callout(t){ $('callout').textContent = t; calloutT = performance.now() + 2600; }
+
+/* ---------- lobby and results ---------- */
+let ready = false, qrFor = '';
+function drawRoom(){
+  if(room){
+    const c = $('crew');
+    c.innerHTML = '';
+    room.people.filter(p => p.role === 'player').forEach(p => {
+      const s = document.createElement('span');
+      s.className = 'chip' + (p.r ? ' ready' : '') + (p.w ? ' away' : '');
+      s.style.borderColor = s.style.color = COLORS[p.c] || '#fff';
+      s.textContent = p.n;
+      if(NET_LABEL[p.net]){ const k = document.createElement('small'); k.textContent = NET_LABEL[p.net].split(' ')[0]; s.appendChild(k); }
+      c.appendChild(s);
+    });
+    const mine = room.people.find(p => p.id === devId);
+    ready = !!(mine && mine.r);
+    $('readyBtn').textContent = ready ? 'READY ✓ (tap to wait)' : 'READY';
+    $('record').textContent = room.best ? 'Best in this house: wave ' + room.best + ' · ' + room.bestScore.toLocaleString() + ' points' : '';
+    const th = $('themes'), list = SND.musicThemes('zombie');
+    if(list.length && th.childElementCount !== list.length + 1){
+      th.innerHTML = '';
+      list.concat([{key: 'off', title: 'Off'}]).forEach(t => {
+        const b = document.createElement('button');
+        b.textContent = t.title; b.dataset.key = t.key;
+        b.addEventListener('click', () => { SND.unlock(); tx({t: 'theme', key: t.key}); SND.sfx('click'); });
+        th.appendChild(b);
+      });
+    }
+    [...th.children].forEach(b => b.classList.toggle('sel', b.dataset.key === room.theme));
+  }
+  if(layout){
+    $('roomInfo').textContent = layout.portals.length + (layout.portals.length === 1 ? ' way in: ' : ' ways in: ') + layout.portals.map(p => p.name).join(', ') + '.';
+    $('setupBtn').textContent = 'SET UP THE ROOM AGAIN';
+    $('lobbySub').textContent = loc.P ? 'Tap READY when you are. Monsters come through the holes; walk over to one and hold REPAIR to board it back up.'
+      : 'Point your camera at any marker so the phone knows where it is.';
+  } else {
+    $('roomInfo').textContent = 'Not set up yet. One person stands in the middle of the room and turns round, pointing at every marker.';
+    $('setupBtn').textContent = 'SET UP THE ROOM';
+    $('lobbySub').textContent = 'First, the room.';
+  }
+  $('readyBtn').disabled = $('startNow').disabled = !layout;
+  [...$('viewOpts').children].forEach(b => b.classList.toggle('sel', b.dataset.v === viewMode));
+  const url = location.href.split('#')[0].split('?')[0] + (isLocal ? '?local=1' : '') + '#' + SET;
+  if(SET && qrFor !== url){ qrFor = url; drawQr($('qr'), url); $('qrBox').style.display = 'block'; }
+}
+$('readyBtn').addEventListener('click', () => { SND.unlock(); ready = !ready; tx({t: 'ready', v: ready}); SND.sfx('click'); });
+$('startNow').addEventListener('click', () => { SND.unlock(); tx({t: 'go'}); });
+$('againBtn').addEventListener('click', () => tx({t: 'again'}));
+$('lobbyBtn').addEventListener('click', () => tx({t: 'lobby'}));
+function setViewMode(v){
+  viewMode = v; store('nwatch_haunt_view', v);
+  view.setView3(v);
+  $('viewBtn').textContent = v === 'ar' ? '📷 AR' : '🌙 DARK';
+  drawRoom();
+}
+$('viewOpts').addEventListener('click', e => { const b = e.target.closest('button'); if(b){ SND.unlock(); setViewMode(b.dataset.v); } });
+$('viewBtn').addEventListener('click', () => { SND.unlock(); setViewMode(viewMode === 'ar' ? 'vr' : 'ar'); toast(viewMode === 'ar' ? 'Camera view' : 'Full immersion - the camera comes back while you walk'); });
+setViewMode(viewMode);
+function musicBtn(){ $('musicBtn').style.opacity = SND.musicEnabled() ? 1 : 0.45; }
+$('musicBtn').addEventListener('click', () => { SND.unlock(); SND.setMusic(!SND.musicEnabled()); musicBtn(); });
+
+function drawQr(cv, text){
+  const m = qrMatrix(text, 'M'), n = m.length, g = cv.getContext('2d');
+  const s = Math.floor(cv.width / (n + 2));
+  g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#000';
+  const o = Math.floor((cv.width - s * n) / 2);
+  for(let y = 0; y < n; y++) for(let x = 0; x < n; x++) if(m[y][x]) g.fillRect(o + x * s, o + y * s, s, s);
+}
+
+function results(){
+  const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
+  const aw = awards(pl);
+  const why = S.why, P = layout && why ? layout.portals[why.sec] : null;
+  $('overSub').innerHTML = '';
+  const sub = document.createElement('span');
+  sub.textContent = (why ? 'A ' + MONSTERS[why.type].name + ' got in through ' + (P ? P.name : 'a hole') : 'The house fell') + ' on wave ' + S.w + '. ';
+  $('overSub').appendChild(sub);
+  if(S.nr){ const r = document.createElement('span'); r.className = 'record'; r.textContent = 'NEW RECORD!'; $('overSub').appendChild(r); }
+  const t = $('results');
+  t.innerHTML = '<tr><td></td><td class="r">score</td><td class="r">kills</td><td class="r">fixed</td></tr>';
+  pl.forEach(p => {
+    const tr = document.createElement('tr');
+    const n = document.createElement('td'); n.className = 'n'; n.style.color = COLORS[p.c]; n.textContent = p.n;
+    if(aw[p.id]){ const a = document.createElement('span'); a.className = 'award'; a.textContent = aw[p.id]; n.appendChild(a); }
+    tr.appendChild(n);
+    for(const v of [p.s.toLocaleString(), p.k, p.rp]){ const td = document.createElement('td'); td.className = 'r'; td.textContent = v; tr.appendChild(td); }
+    t.appendChild(tr);
+  });
+}
+
+/* ---------- the markers in view, outlined (setting up the room) ---------- */
+const mk = $('marks'), mg = mk.getContext('2d');
+function sizeMarks(){ const d = Math.min(2, devicePixelRatio || 1); mk.width = innerWidth * d; mk.height = innerHeight * d; mg.setTransform(d, 0, 0, d, 0, 0); }
+sizeMarks(); addEventListener('resize', sizeMarks);
+let marksOn = false;
+function drawMarks(dets){
+  if(!survey || !dets || !src || viewMode !== 'ar'){
+    // resizing a canvas wipes it for certain (a plain clear was seen to leave the boxes behind)
+    if(marksOn){ marksOn = false; sizeMarks(); mk.style.display = 'none'; }
+    return;
+  }
+  if(!marksOn){ marksOn = true; mk.style.display = 'block'; }
+  mg.save(); mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, mk.width, mk.height); mg.restore();
+  const W = innerWidth, H = innerHeight, s = Math.max(W / src.vw, H / src.vh);
+  const ox = (src.vw * s - W) / 2, oy = (src.vh * s - H) / 2, k = s / detScale;
+  for(const d of dets){
+    const ok = survey.placed(d.id);
+    mg.strokeStyle = ok ? '#5cff8a' : '#ffb35c'; mg.lineWidth = 3;
+    mg.beginPath();
+    d.c.forEach((p, i) => { const x = p[0] * k - ox, y = p[1] * k - oy; i ? mg.lineTo(x, y) : mg.moveTo(x, y); });
+    mg.closePath(); mg.stroke();
+    mg.fillStyle = mg.strokeStyle; mg.font = '800 16px system-ui'; mg.textAlign = 'center';
+    const m = survey.list().find(x => x.id === d.id);
+    if(m) mg.fillText(m.label + (ok ? ' ✓' : ''), d.ctr[0] * k - ox, d.ctr[1] * k - oy + 6);
+  }
+}
+
+/* ---------- every frame ---------- */
+let focalSaved = performance.now(), lastT = performance.now(), frameN = 0, detMs = 0, lastDets = [], fSet = 0, walk = 0, lastP = null;
+function frame(){
+  requestAnimationFrame(frame);
+  const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
+  lastT = now;
+  if(simcam){ simcam.render(); simcam.sensor(sensorQ); sensing = true; }
+  let dets = null;
+  if(src && det){
+    if(src.el.videoWidth && (src.el.videoWidth !== src.vw || src.el.videoHeight !== src.vh)) sizeCamera();
+    // a slow phone looks every other frame
+    if(frameN++ % (detMs > 14 ? 2 : 1) === 0){
+      const t0 = performance.now();
+      dets = det.detect(grab());
+      detMs = detMs * 0.9 + (performance.now() - t0) * 0.1;
+      focal.add(dets);
+      lastDets = dets;
+    }
+    const cam = {f: focal.f, cx: det.w / 2, cy: det.h / 2};
+    const Rs = rowMajor(sensorQ);
+    if(survey){
+      if(dets){ survey.add(dets, Rs, cam); drawFound(); }
+    } else if(layout){
+      loc = locator.update(dets, Rs, cam, dt);
+      if(locator.fSuggest && !focal.sure){ focal.set(focal.f * 0.5 + locator.fSuggest * 0.5); locator.fSuggest = null; }
+    }
+    if(Math.abs(focal.f - fSet) > 0.5){ fSet = focal.f; view.setFocal(focal.f / detScale, src.vw, src.vh); }
+  }
+  // which way to look: the sensors, turned round to the room
+  const yaw = survey ? 0 : loc.yaw != null ? loc.yaw : 0;
+  yawQ.setFromAxisAngle(Y, yaw);
+  viewQ.copy(yawQ).multiply(sensorQ);
+  // walking (full immersion fades the camera in)
+  let speed = 0;
+  if(loc.P && lastP && dt > 0) speed = Math.hypot(loc.P[0] - lastP[0], loc.P[2] - lastP[2]) / dt;
+  lastP = loc.P ? loc.P.slice() : null;
+  const moving = Math.max(Math.min(1, Math.max(0, accel - 0.5) / 1.2), Math.min(1, Math.max(0, speed - 0.25) / 0.6));
+  walk += ((moving > 0.3 ? 1 : 0) - walk) * Math.min(1, dt * (moving > 0.3 ? 6 : 0.8));
+  view.setWalking(walk);
+  // where am I?
+  const lostNow = !survey && layout && joined && (loc.P == null || (loc.fix > 8 && phase !== 'lobby'));
+  $('lost').style.display = lostNow ? 'block' : 'none';
+  if(lostNow) $('lost').textContent = loc.P == null ? 'Point the camera at a marker so the phone knows where it is' : 'Lost track - glance at a marker';
+  zctl.frame(dt, now, viewQ);
+  drawMarks(survey ? lastDets : null);
+  if(now > bannerT) $('banner').classList.remove('on');
+  if(now > toastT) $('toast').classList.remove('on');
+  if(now > calloutT) $('callout').textContent = '';
+  // a host that has gone quiet (a closed tab says nothing)
+  if(joined && !host && conn && now - lastSnap > 3500) lost();
+  // a better idea of this camera's focal length, kept for next time
+  if(focal && !SIM && now - focalSaved > 30000){ focalSaved = now; try { localStorage.setItem('nwatch_focal', JSON.stringify(focal.keep())); } catch(e){} }
+  const theme = room && room.theme;
+  const want = !S ? null : phase === 'lobby' ? (theme && theme !== 'off' && room.themePicked ? theme : 'zlobby') : phase === 'over' ? null :
+    (S.boss ? 'witchboss' : theme === 'off' ? null : theme || 'danse');
+  SND.music(want);
+}
+requestAnimationFrame(frame);
+
+/* For hauntcheck: drive this phone without a phone. */
+window.NW_TEST = {
+  sim: () => simcam,
+  host: () => host, iAmHost: () => iAmHost,
+  z: () => zctl.test,
+  view: () => view,
+  survey: () => survey, startSurvey, endSurvey,
+  layout: () => layout,
+  loc: () => ({P: loc.P, yaw: loc.yaw, fix: loc.fix, seen: loc.seen}),
+  focal: () => focal && {f: focal.f / detScale, sure: focal.sure},
+  setView: setViewMode,
+  ready: v => tx({t: 'ready', v}),
+  go: () => tx({t: 'go'}),
+  state: () => ({phase, me: me.c, wave: S && S.w, room, joined, host: iAmHost, set: SET,
+    score: myPlayer() ? myPlayer().s : 0, why: S && S.why}),
+  viewQ: () => viewQ.toArray(),
+  marks: () => ({on: marksOn, survey: !!survey, disp: mk.style.display}),
+};
+</script>
+</body>
+</html>
