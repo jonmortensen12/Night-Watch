@@ -19,8 +19,10 @@ published.
   for the camera games), guests' phones as controllers. The Meta Portal TV
   is a nice-to-have only (for a jumbotron or dance screen); a test page
   would tell whether its browser allows the camera, WebGL and enough speed
-  for pose tracking. Fire Stick: can show a browser game but has no camera
-  and little 3D power, and cannot see the Portal's camera.
+  for pose tracking. Fire Stick: runs browser games in Silk with phones as
+  controllers (dry-fly-phone and family-smash both play that way), so it is
+  a usable screen for the gridiron games; it has no camera, cannot see the
+  Portal's camera, and how much 3D it can handle is unproven.
 - **Joining:** everything joins the way the existing games do: a QR code
   on the station's screen, phones scan it, no app install.
 
@@ -84,12 +86,30 @@ Effort: 🟢 about a day · 🟡 a few days · 🔴 a week or more.
    reacts, a spike gesture to stop the clock, score before time runs out.
    Versus: two QBs alternating drives.
 
-   Note on "Dry Fly technology": Dry Fly's phone remote is a settings
-   remote (sliders) for the VR headset, and its casting comes from VR
-   controllers. The phone link (PeerJS, a room code) carries over, and so
-   does its thinking about turning a hand stroke into a launch, but reading
-   a throw from a phone's motion sensors is new work. A thrown ball is far
-   simpler physics than a fly line.
+   **Built on dry-fly-phone** (`jonmortensen12/dry-fly-phone`, read its
+   `PHONE.md`), where the phone already IS the fly rod and casts, with the
+   game on a big screen (a Fire TV Stick in Silk, a computer or a tablet):
+   - `web/rodsense.js` (141 lines, no dependencies): the phone's motion as
+     a pose. Orientation from the gyro integrated per `devicemotion` event,
+     pulled toward the browser's fused orientation when moving slowly (the
+     browser's angles alone hit a gimbal point exactly where a back cast
+     stops). Hand travel from the accelerometer integrated twice, velocity
+     zeroed at each stop (gyro quiet AND accelerometer reading gravity
+     only). Hard-won: `rotationRate.alpha` is about the phone's x axis
+     (the old spec text is wrong, and following it drifted 91°); the
+     accelerometer's sign differs between iOS and Android, so it is
+     measured. `rodsensecheck.mjs` tests it against a known motion.
+   - `web/rod.js` + `remote.html`: the controller page, sending
+     `{t:'rod', q, p, ...}` ~60 times a second on a 16 ms timer (never
+     requestAnimationFrame: an iPhone in Low Power Mode paints at half
+     rate), HOLD LINE as a thumb on the screen, haptic `buzz` back from the
+     game, wake lock that survives an iPhone. `tvcheck.cjs` tests TV + phone
+     end to end.
+   For a throw: copy `rodsense.js`; the throw is the arm's speed (gyro
+   rate and hand travel) at the moment the thumb lifts, like letting go of
+   HOLD LINE; direction from the orientation; spiral from roll rate. The
+   "dry-fly" VR repo's phone remote is a different thing: settings and
+   level selection only.
 
 ### D. Camera games (a laptop/tablet camera, or the Portal if it allows)
 
@@ -145,7 +165,7 @@ groups can be built side by side.
 | Repo | Games | Shared core |
 |---|---|---|
 | **night-watch** (exists) | 1, 2, 3, 4, 8, 9, 17 | A game-day theme over the existing sims and renderers (`?theme=gameday` or a lobby switch), so the Halloween versions stay intact |
-| **gridiron** (new) | 5, 6, 7, 10, 11, 20, 22 | A football field renderer, ball flight, and the phone-motion "throw/kick/flick" reader. Field Goal Frenzy and Touchdown Pass share almost everything |
+| **gridiron** (new) | 5, 6, 7, 10, 11, 20, 22 | A football field renderer, ball flight, and the phone-motion "throw/kick/flick" reader, built from dry-fly-phone's `rodsense.js` and `rod.js`. Field Goal Frenzy and Touchdown Pass share almost everything |
 | **cougar-cam** (new) | 12, 13, 19, 21 | Camera handling and MediaPipe (pose, face, person cut-out) bundled locally, the Cosmo/costume art, the Portal test page. Photo Booth first, it proves the pipeline |
 | **party-hub** (new) | 14, 15, 16, 18, 23 | Lightweight phone + screen pages, no 3D. Owns the **scoreboard**: one small Cloudflare Worker endpoint other games post scores to, which the Jumbotron and Halftime Showdown read |
 
@@ -154,7 +174,9 @@ markers and portals), build it there; gridiron would then share only the
 throw reader with it.
 
 **Shared code.** Each repo deploys on its own, so copy rather than import
-across repos. night-watch is the source to copy from:
+across repos. For gridiron, also copy `web/rodsense.js`, `web/rod.js` and
+`rodsensecheck.mjs` from dry-fly-phone (above). night-watch is the source
+for everything else:
 - `web/net.js` — PeerJS rooms, `?local=1` BroadcastChannel testing, fixed
   codes and join-or-host (Haunted House), connection-type reporting.
 - `web/host.js` — the host loop (60 Hz sim, 20 Hz snapshots, away/gone,
@@ -194,8 +216,16 @@ couples them.
 
 Items 1-4 can run in four chats at once, one per repo.
 
+## Creating the repos
+
+They have to be made by hand on github.com (New repository): the Claude
+GitHub connection can work in existing repos but not create them. Then make
+sure the Claude GitHub App can see them (https://claude.ai/connect-github if
+it is set to selected repositories only), and start a chat with the repo
+selected.
+
 ## Starting a chat on one of these
 
-Paste something like: "Read GAMEDAY.md in jonmortensen12/night-watch (game
-ideas #N, #M). Create/use the `<repo>` repo per its 'Repositories' section,
-copying the shared code it lists from night-watch."
+Paste something like: "Read GAMEDAY.md in jonmortensen12/Night-Watch (game
+ideas #N, #M). Set up this repo per its 'Repositories' section, copying the
+shared code it lists from Night-Watch (and, for gridiron, dry-fly-phone)."
