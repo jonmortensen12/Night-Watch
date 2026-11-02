@@ -52,7 +52,13 @@ export function createHost(opts){
   const fixedMode = opts.mode || null;
   let mode = fixedMode || save.mode, G = GAMES[mode];
   let layout = opts.layout || null;
-  const fresh = () => G.create((Math.random() * 2 ** 32) >>> 0, mode === 'haunt' ? layout : undefined);
+  /* Printed markers (Space and the Bunker): per game 'off' | 'face' | 'walk'
+     (walk: the Bunker only - the fence is the boundary drawn in the room),
+     and the room's marker layout, kept on this device for next time. */
+  const MK_MODES = {space: ['off', 'face'], zombie: ['off', 'face', 'walk']};
+  const mk = Object.assign({mode: {space: 'off', zombie: 'off'}, layout: null}, save.mk || {});
+  const walking = () => mode === 'zombie' && mk.mode.zombie === 'walk' && mk.layout && mk.layout.fence && mk.layout.portals && mk.layout.portals.length >= 3;
+  const fresh = () => G.create((Math.random() * 2 ** 32) >>> 0, mode === 'haunt' ? layout : walking() ? mk.layout : undefined);
   let S = opts.restore || fresh();
   if(opts.restore) Object.values(S.players).forEach(p => { p.away = true; p.firing = false; p.repairing = false; });
   let joins = 0;
@@ -97,6 +103,7 @@ export function createHost(opts){
           const pl = G.join(S, id, p.name);
           send(p, {t: 'you', id, c: pl.color});
         }
+        if(mk.layout && mode !== 'haunt') send(p, {t: 'layout', L: mk.layout});
         if(opts.onHello) opts.onHello(p, api);
         roomDirty = true;
         return;
@@ -143,7 +150,40 @@ export function createHost(opts){
       if(S.phase === 'over' && S.phaseT > 2.5){ G.toLobby(S); Object.values(people).forEach(q => { q.ready = false; }); roomDirty = true; }
     } else if(d.t === 'theme'){
       if(typeof d.key === 'string' && d.key.length < 24){ save.themes[mode] = d.key; themePicked = true; persist(); roomDirty = true; }
+    } else if(d.t === 'markers'){
+      // the lobby's marker setting, for the game being played
+      if(MK_MODES[mode] && MK_MODES[mode].indexOf(d.mode) >= 0 && (S.phase === 'lobby' || S.phase === 'over')){
+        mk.mode[mode] = d.mode; save.mk = mk; persist();
+        rebuild();
+      }
+    } else if(d.t === 'layout' && mode !== 'haunt'){
+      if(okMarkers(d.L) && (S.phase === 'lobby' || S.phase === 'over')){
+        mk.layout = d.L; save.mk = mk; persist();
+        broadcast({t: 'layout', L: d.L});
+        rebuild();
+      }
     } else if(opts.onData) opts.onData(p, d, api);
+  }
+
+  function okMarkers(L){
+    if(!L || typeof L !== 'object' || !L.markers || typeof L.markers !== 'object' || JSON.stringify(L).length > 20000) return false;
+    if(!Object.values(L.markers).every(m => m && Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite) && Array.isArray(m.q) && m.q.length === 4 && m.q.every(Number.isFinite))) return false;
+    if(L.portals && !(Array.isArray(L.portals) && L.portals.every(p => [p.a[0], p.a[1], p.b[0], p.b[1], p.n[0], p.n[1], p.y0, p.y1].every(Number.isFinite)))) return false;
+    return true;
+  }
+  /* A new fence (or none) for the bunker: a fresh game, everybody kept. */
+  let builtFence = walking() ? JSON.stringify(mk.layout.portals) : '';
+  function rebuild(){
+    const want = walking() ? JSON.stringify(mk.layout.portals) : '';
+    if(mode === 'zombie' && want !== builtFence){
+      builtFence = want;
+      const keep = Object.values(S.players).filter(q => !q.away).sort((a, b) => a.color - b.color);
+      S = fresh();
+      keep.forEach(q => G.join(S, q.id, q.name));
+      Object.values(people).forEach(p => { p.ready = false; });
+      if(opts.onLayout) opts.onLayout(walking() ? mk.layout : null);
+    }
+    roomDirty = true;
   }
 
   /* Between games only. Everybody keeps their colour. */
@@ -152,7 +192,7 @@ export function createHost(opts){
     const keep = Object.values(S.players).filter(q => !q.away).sort((a, b) => a.color - b.color);
     mode = m; G = GAMES[m];
     save.mode = m; persist();
-    S = G.create((Math.random() * 2 ** 32) >>> 0);
+    S = fresh();
     keep.forEach(q => G.join(S, q.id, q.name));
     Object.values(people).forEach(p => {
       if(p.role !== 'player' || !p.conn) return;
@@ -161,6 +201,8 @@ export function createHost(opts){
       send(p, {t: 'you', id: p.id, c: pl.color});
     });
     themePicked = false;
+    builtFence = walking() ? JSON.stringify(mk.layout.portals) : '';
+    if(opts.onLayout) opts.onLayout(walking() ? mk.layout : null);
     roomDirty = true;
   }
 
@@ -175,6 +217,7 @@ export function createHost(opts){
     if(S.phase !== 'lobby' && S.phase !== 'over') return;
     if(!players().length) return;
     if(mode === 'haunt' && !layout) return;          // no room set up yet
+    if(mode === 'zombie' && mk.mode.zombie === 'walk' && !walking()) return;   // no bunker drawn yet
     G.start(S);
     themePicked = false;
     Object.values(people).forEach(p => { p.ready = false; });
@@ -196,6 +239,8 @@ export function createHost(opts){
     const b = save.bests[mode];
     return {code: room.code, status: room.status, tv: room.tv, mode, theme: save.themes[mode], themePicked,
       best: b.best, bestScore: b.bestScore,
+      mk: {mode: (mk.mode[mode] || 'off'), has: mk.layout ? Object.keys(mk.layout.markers).length : 0, fence: walking() ? 1 : 0,
+        bound: mk.layout && mk.layout.fence ? 1 : 0},
       people: Object.values(people).map(p => {
         const pl = S.players[p.id];
         return {id: p.id, n: p.name, role: p.role, c: pl ? pl.color : -1, r: p.ready ? 1 : 0, w: p.conn ? 0 : 1, j: p.j,
@@ -275,6 +320,7 @@ export function createHost(opts){
   const api = {
     get S(){ return S; }, get mode(){ return mode; }, get layout(){ return layout; }, setMode, setLayout, room, local, go, roomInfo,
     send, broadcast, people: () => people,
+    fence: () => walking() ? mk.layout : null, markers: () => mk,
     // the TV's own keyboard
     key: k => { if(k === 'go') go(); },
     destroy: () => { dead = true; clearInterval(timer); if(handle) handle.destroy(); },

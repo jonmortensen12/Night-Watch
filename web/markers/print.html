@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Haunted House - print a set</title>
+<title>Night Watch - print markers</title>
 <link rel="icon" href="../icon-192.png">
 <style>
 /* On screen: a short form, then the pages as they will print. On paper:
@@ -24,7 +24,7 @@ body { margin: 0; font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, san
 .sheet { width: 210mm; height: 270mm; margin: 12px auto; background: #fff; padding: 8mm 10mm; position: relative; overflow: hidden; box-shadow: 0 4px 24px #0008; }
 .sheet .num { font: 900 15mm/1 system-ui, sans-serif; text-align: center; margin-top: 2mm; }
 .sheet .arrow { width: 22mm; height: 22mm; margin: 2mm auto 0; display: block; }
-.sheet .mark { width: 160mm; height: 160mm; display: block; margin: 16mm auto 0; }
+.sheet .mark { width: 160mm; height: 160mm; display: block; margin: 22mm auto 0; }
 .sheet .how { margin: 16mm 8mm 0; font-size: 12pt; color: #333; text-align: center; }
 .sheet .foot { position: absolute; left: 0; right: 0; bottom: 6mm; text-align: center; font-size: 9pt; color: #999; }
 .cover h2 { font: 900 13mm/1.1 system-ui, sans-serif; text-align: center; margin: 6mm 0 2mm; letter-spacing: 0.04em; }
@@ -47,15 +47,10 @@ body { margin: 0; font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, san
 </head>
 <body>
 <div id="form">
-  <h1>🎃 HAUNTED HOUSE</h1>
-  <p>Print a set of markers. Tape them up round a room: each one is a place monsters break through. Everybody joins by scanning the code on the first page, and the set keeps that code for good - print it once, play with it whenever.</p>
-  <label>This set's code</label>
-  <div class="row"><span class="code" id="code"></span><button id="newCode" type="button">Make a new set</button></div>
-  <p id="codeNote" style="font-size:14px"></p>
-  <label for="singles">Single markers (a window or a doorway each)</label>
-  <select id="singles"></select>
-  <label for="pairs">Pairs (left + right, for a wide opening)</label>
-  <select id="pairs"><option value="0">None</option><option value="1" selected>One pair (A)</option><option value="2">Two (A, B)</option><option value="3">Three (A, B, C)</option></select>
+  <h1>🎯 NIGHT WATCH MARKERS</h1>
+  <p>Optional, for Space and the Bunker. Tape these round the room and pick <b>Markers</b> in the game's lobby: everybody's phone knows which way is which (no more pointing at FRONT and re-locking), and in the Bunker you can walk round the room for real instead of using the stick.</p>
+  <label for="count">How many markers</label>
+  <select id="count"></select>
   <label for="style">Ink</label>
   <select id="style">
     <option value="hatch" selected>Ink saver - hatched, solid edge (recommended)</option>
@@ -63,32 +58,24 @@ body { margin: 0; font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, san
     <option value="solid">Solid black - most precise</option>
   </select>
   <p id="inkNote" style="font-size:14px"></p>
-  <div class="row"><button class="go" id="print" type="button">🖨 PRINT</button><a href="./" id="playLink">Open the game</a></div>
+  <div class="row"><button class="go" id="print" type="button">🖨 PRINT</button><a href="../" id="playLink">Open the game</a></div>
   <p class="warn">Print at <b>100% / actual size</b> - not "fit to page". The line on the first page should measure exactly 10 cm. Plain white paper; matte is better than glossy.</p>
 </div>
 <div id="pages"></div>
 
 <script src="../qr.js"></script>
 <script type="module">
-import {markerSVG, label, pairOf, SINGLES, inkOf, STYLES} from './markers.js';
+import {markerSVG, inkOf, STYLES, CODES} from './markers.js';
 
 const $ = id => document.getElementById(id);
-const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-function newCode(){ let c = ''; for(let i = 0; i < 6; i++) c += LETTERS[Math.floor(Math.random() * LETTERS.length)]; return c; }
 function recall(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
 function store(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
 
-/* A set code from the link (#ABCDEF reprints a set), the one this browser
-   made before, or a new one. */
-let code = (location.hash || '').replace('#', '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-if(code.length !== 6) code = recall('nwatch_set') || newCode();
-store('nwatch_set', code);
+for(let i = 4; i <= CODES.length; i++){ const o = document.createElement('option'); o.value = i; o.textContent = i; if(i === 8) o.selected = true; $('count').appendChild(o); }
+if(+recall('nwatch_print_count') >= 4) $('count').value = recall('nwatch_print_count');
+if(STYLES[recall('nwatch_print_style')]) $('style').value = recall('nwatch_print_style');
 
-for(let i = 4; i <= SINGLES; i++){ const o = document.createElement('option'); o.value = i; o.textContent = i; if(i === 8) o.selected = true; $('singles').appendChild(o); }
-
-function joinUrl(){ return location.href.split('#')[0].split('?')[0].replace(/print\.html$/, '') + '#' + code; }
-
-const ARROW = `<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 1 L18 10 H13 V19 H7 V10 H2 Z" fill="none" stroke="#b8b8b8" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+function gameUrl(){ return location.href.split('#')[0].split('?')[0].replace(/markers\/print\.html$/, '').replace(/markers\/$/, ''); }
 
 function qrImg(text){
   const m = qrMatrix(text, 'M'), n = m.length, s = 8;
@@ -101,68 +88,48 @@ function qrImg(text){
   return c.toDataURL();
 }
 
-function howTo(id){
-  const p = pairOf(id);
-  if(p) return p.side === 'L'
-    ? `Pair ${p.pair}, <b>left</b> edge of a wide opening (as you look at it from inside the room). Its partner goes on the right edge, at the same height. On a wall: a wide window between them. On the floor: a wide doorway.`
-    : `Pair ${p.pair}, <b>right</b> edge of a wide opening (as you look at it from inside the room). Its partner goes on the left edge, at the same height.`;
-  return `<b>On a wall:</b> tape it where a monster should break through - the hole opens around it, at its height.<br><b>On the floor:</b> a doorway. Lay it flat with the arrow pointing the way the monsters come from.`;
-}
-
 function draw(){
-  $('code').textContent = code;
-  $('codeNote').textContent = recall('nwatch_set_printed') === code ? 'You have printed this set before. Reprinting gives the same code.' : '';
-  $('playLink').href = './#' + code;
-  const singles = +$('singles').value, pairs = +$('pairs').value, style = $('style').value;
-  store('nwatch_print_style', style);
+  const count = +$('count').value, style = $('style').value;
+  store('nwatch_print_style', style); store('nwatch_print_count', count);
   const ids = [];
-  for(let i = 0; i < singles; i++) ids.push(i);
-  for(let k = 0; k < pairs; k++) ids.push(SINGLES + k * 2, SINGLES + k * 2 + 1);
+  for(let i = 0; i < count; i++) ids.push(i);
   const ink = st => ids.reduce((a, id) => a + inkOf(id, st), 0);
   const save = 1 - ink(style) / ink('solid');
   $('inkNote').textContent = style === 'solid' ? 'Each marker is a 16 cm square, about 80% black.'
     : `About ${Math.round(save * 100)}% less ink than solid black. ` + (style === 'hatch'
       ? 'Found just as far away; positions within about 1% of the distance.'
       : 'Found just as far away; distances a few percent less exact (fine to play with).');
-  const foot = `Night Watch · Haunted House · set ${code}`;
+  const foot = 'Night Watch markers';
   let html = `<section class="sheet cover">
-    <h2>HAUNTED HOUSE</h2>
-    <p class="sub">Scan to join the game - set <b>${code}</b></p>
-    <img class="qr" src="${qrImg(joinUrl())}" alt="join code">
-    <div class="setcode">${code}</div>
+    <h2>NIGHT WATCH MARKERS</h2>
+    <p class="sub">Scan to open the game</p>
+    <img class="qr" src="${qrImg(gameUrl())}" alt="the game">
     <ol>
-      <li>Tape the markers round one room: on walls where monsters should break in (windows are good), and on the floor at doorways. ${ids.length} markers, use as many as you like - three to six is plenty to start.</li>
-      <li>Everybody scans this code. The first phone in runs the game; if it drops out, the next one carries on.</li>
-      <li>The first time, somebody taps <b>SET UP THE ROOM</b>, stands in the middle and turns slowly round, pointing at every marker. The room is remembered: move a marker and set it up again.</li>
-      <li>Shoot from anywhere. To repair a hole you have to walk over to it and hold REPAIR. If one gets in, you lose.</li>
-      <li>Keep the room lit enough to see the markers, and clear the floor - you will be walking about looking at your phone.</li>
+      <li><b>Tape them up</b> round the room you play in, spread out on every side: walls, the back of the couch, a bookcase, a chair. Any height, any angle, facing roughly into the room. Keep each one flat (on a bit of cardboard if the surface curves) and somewhere it will not move - not a seat cushion.</li>
+      <li><b>In the lobby, pick Markers.</b> The first time, somebody taps SET UP MARKERS, points at the TV (or whatever you call the front), then stands in the middle and turns slowly round until every marker is ticked.</li>
+      <li><b>Space:</b> between waves, glance at any marker and your phone squares itself up with everybody else's.</li>
+      <li><b>Bunker, Walk the room:</b> after the turn round, aim at the floor and tap to put down the corners of your bunker - keep inside the furniture. Then walk to a wall to fix it. Players with no camera, or sitting down, can still use the stick.</li>
+      <li>The room is remembered. Move a marker and set it up again.</li>
     </ol>
     <div class="ruler">this line should be exactly 10 cm - if not, print at 100%</div>
     <div class="foot">${foot}</div>
   </section>`;
   for(const id of ids){
     html += `<section class="sheet">
-      <div class="num">${label(id).toUpperCase()}</div>
-      <span class="arrow">${ARROW}</span>
+      <div class="num">${id + 1}</div>
       <div class="mark">${markerSVG(id, style)}</div>
-      <p class="how">${howTo(id)}</p>
+      <p class="how">Tape anywhere round the room, facing into it. Keep it flat and where it will not move.</p>
       <div class="foot">${foot}</div>
     </section>`;
   }
   $('pages').innerHTML = html;
   $('pages').querySelectorAll('.mark svg').forEach(s => { s.setAttribute('width', '100%'); s.setAttribute('height', '100%'); });
 }
-$('singles').addEventListener('change', draw);
-$('pairs').addEventListener('change', draw);
+$('count').addEventListener('change', draw);
 $('style').addEventListener('change', draw);
-if(STYLES[recall('nwatch_print_style')]) $('style').value = recall('nwatch_print_style');
-$('newCode').addEventListener('click', () => {
-  if(!confirm('A new set gets a new join code. Markers printed for the old set will still work with the old code. Make a new one?')) return;
-  code = newCode(); store('nwatch_set', code); location.hash = code; draw();
-});
-$('print').addEventListener('click', () => { store('nwatch_set_printed', code); window.print(); });
+$('print').addEventListener('click', () => window.print());
 draw();
-window.NW_PRINT = {code: () => code, url: joinUrl};
+window.NW_PRINT = {url: gameUrl, count: () => +$('count').value};
 </script>
 </body>
 </html>

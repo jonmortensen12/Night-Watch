@@ -19,8 +19,11 @@ Fire-Stick-bound), a full working game. Working title.
 
 | File | What it is |
 |---|---|
-| `web/index.html` | The TV. Hosts the room (or, with `?watch=CODE`, watches a phone's game), draws the battle, plays the music. |
-| `web/play.html` | The phone. Joins a room, or hosts one itself ("START A GAME ON THIS PHONE"). |
+| `web/index.html` | The front page: a menu, Space or Bunker, play or show on a TV, print markers. |
+| `web/space/`, `web/bunker/` | Each game's own link. A phone goes to `play.html?game=…`, a big screen to `tv.html?game=…` (`?tv=1` makes a phone or tablet the TV). |
+| `web/tv.html` | The TV. Hosts the room (or, with `?watch=CODE`, watches a phone's game), draws the battle, plays the music. `?game=` fixes the game. |
+| `web/play.html` | The phone. Joins a room, or hosts one itself ("START A GAME ON THIS PHONE"). `?game=` fixes the game. |
+| `web/markers/` | Printed markers, an option in both games: `kit.js` (the phone side), `markers.js` (find them), `room.js` (the survey, the boundary, finding yourself), `print.html`, `simcam.js` (a pretend camera for the checks). See "Printed markers" below. |
 | `web/sim.js` | The space simulation. Pure, deterministic, no drawing. Used by the host and by `simcheck`. |
 | `web/zsim.js` | The bunker (zombie mode) simulation, the same shape as `sim.js`. |
 | `web/yard.js` | The bunker's renderer: the graveyard, the fence, the monsters, the guns. |
@@ -33,14 +36,16 @@ Fire-Stick-bound), a full working game. Working title.
 | `web/lib/` | three.js r170 and its bloom passes, vendored so the game does not depend on a CDN for its 3D. |
 | `web/music/` | Rendered by `tools/music.py`. |
 | `worker.js`, `wrangler.jsonc` | Serves `web/` and `/relay` (Cloudflare TURN), exactly as Mission Control. |
-| `web/haunt/` | The Haunted House (AR with printed markers): its own page at `/haunt/`, `print.html` for the markers. See its section below. |
-| `simcheck.mjs`, `netcheck.mjs`, `hauntcheck.mjs` | The checks. `tools/art.mjs` draws the icons and link preview. |
+| `web/haunt/` | The Haunted House (AR with printed markers), shelved: still at `/haunt/`, linked from nowhere. See its section below. |
+| `simcheck.mjs`, `netcheck.mjs`, `markcheck.mjs`, `hauntcheck.mjs` | The checks. `tools/art.mjs` draws the icons and link preview. |
 
 ## Playing alone
 
-A phone that opens the main URL is sent straight to `play.html` (a
-coarse pointer and a screen under 600 px; `?tv=1` keeps a phone or tablet
-as the TV). There, START A GAME ON THIS PHONE hosts on the phone itself
+The front page is a menu. `/space/` and `/bunker/` send a phone straight to
+`play.html` (a coarse pointer and a screen under 600 px; `?tv=1` keeps a
+phone or tablet as the TV) and anything bigger to `tv.html`, with
+`?game=` fixing the game: no game picker, and the host ignores requests to
+switch (`createHost({mode})`). There, START A GAME ON THIS PHONE hosts on the phone itself
 and READY (or START NOW) begins a solo game. The TV lobby says so, and
 links a laptop to the same page.
 
@@ -49,7 +54,7 @@ links a laptop to the same page.
 - `play.html?local=1`, START A GAME ON THIS PHONE: on a laptop there are no
   motion sensors, so it falls back to drag-to-look. **Space** fires, **M**
   fires a missile when locked, **F** resets front.
-- `index.html?local=1` plus `play.html?local=1#CODE` in other tabs of the
+- `tv.html?local=1` plus `play.html?local=1#CODE` in other tabs of the
   same browser: a TV and phones with no internet. This is what `netcheck`
   drives.
 - `?q=low` on either page: no bloom, fewer particles, smaller sky.
@@ -482,7 +487,79 @@ After the second phone test ("the blue walls didn't stay put very well and
 the pumpkin still moved around if you turned your back") the camera-only
 approach was set aside for printed markers: the Haunted House.
 
-## The Haunted House (`web/haunt/`)
+## Printed markers (Space and the Bunker, `web/markers/`)
+
+Asked for (2026-11-02), after the Haunted House's AR test ("the windows
+would noticeably snap into place ... the boards were very much in the way
+... I couldn't peek out around the windows"): drop AR, and use the printed
+markers as an option in the normal games, so nobody needs the stick and
+everybody faces the same way. Separate links for Space and the Bunker,
+markers optional in both, "Off" exactly the game as before; no camera
+fade-in; in Space the camera only between waves; several markers so nobody
+has to turn to the front; a boundary drawn on the floor, Quest-style,
+instead of markers as walls; position corrections glide gently.
+
+**The lobby setting** (`{t: 'markers', mode}`, kept by the host per game in
+`nwatch_save.mk`, shown in `room.mk`):
+- **Off** - LOCK FRONT and (Bunker) the stick, as always.
+- **Face the same way** - the camera looks for markers in the lobby, the
+  countdown and between waves, and is switched off during a wave (the
+  battery). Any marker in view gives the room's yaw (`kit.yaw()`), which
+  replaces LOCK FRONT; the lock screen closes itself the first time
+  ("Squared up from the markers"). The Bunker's stick still walks.
+- **Walk the room** (Bunker only) - the camera is on all the time at
+  640x480, 15 fps, looked at about eight times a second and never shown.
+  The phone's position in the room is its position in the bunker
+  (`kit.pos()`, null when unknown - then the stick walks). The bunker is the
+  shape drawn on the floor.
+
+**Setting up** (`kit.startSetup`, one phone for everybody; the layout goes to
+the host as `{t: 'layout', L}`, which keeps it, sends it to every phone that
+joins and to the TV): (1) point at FRONT, tap LOCK - the room's frame is
+this phone's sensors turned so that is -z; (2) stand in the middle and
+turn slowly round until every marker is ticked (`Survey.buildMarkers`:
+markers at any angle - a couch back is fine - plus the focal length
+self-calibration); (3) for walking, the corners: aim the cross at the floor
+and tap CORNER (the floor point is the phone's position plus its pointing
+ray down to y = 0; it wants a marker seen in the last 10 s), going round
+the space; MAP shows it from above to drag corners, tap + to add one, tap
+a corner twice to remove it. `boundaryProblem` refuses fewer than three
+corners, under 2 m², or crossing sides. `fenceLayout` turns the ring into
+fence sections of about 1.8 m facing out, named by side ("front left").
+
+**The bunker on a drawn boundary**: `zsim.create(seed, layout)` with
+`layout.fence` - the Haunted House's layout rules, but every section is a
+target every wave (monsters from all sides, as in the square bunker), no
+"coming through" callouts. `Yard.buildBunker` now builds any ring of
+sections: a post at every section end (taller, with a lantern, where the
+fence turns), planks, a floor in the ring's shape, the TV camera pulled
+back to fit (`Yard.setSections` swaps it). The phone's stick is kept inside
+the drawn fence (`inside`), sliding along it.
+
+**Finding yourself** is the Haunted House's `Locator`, glide 0.35 s, with a
+jump of over 1.5 m believed after three agreeing sightings. Positions from
+markers are held between sightings; `kit.pos()` gives up 20 s after the
+last one (back to the stick).
+
+**`markcheck.mjs`**: the Bunker hosted by a TV: Walk the room picked on a
+phone; no game before a bunker is drawn; the turn round finds all five
+markers (3 cm); four corners tapped on the pretend floor (within 8 cm);
+the host plays on the drawn fence and the TV draws it; the phone knows
+where it is walking about (a few cm); a phone with no camera walks with
+the stick and is stopped by the fence; a game: monsters at six different
+sections, the walking phone shoots them through the pretend camera;
+walking to a damaged section offers REPAIR and it works. Space: Off and
+Face the same way only; set up; a second phone, sensors turned 1.8 rad
+differently and never locked, squares up from one marker in the lobby
+(under 1° from the first phone); FRONT is -z; the camera off in a wave and
+on between waves. The pretend phones render at a few frames a second in
+software, so the checks give them time; `ONLY_SPACE=1` runs just Space.
+
+## The Haunted House (`web/haunt/`, shelved)
+
+Shelved 2026-11-02 for the markers in Space and the Bunker (above); the
+code stays, `/haunt/` still works, nothing links to it. Its markers,
+survey and print page moved to `web/markers/`.
 
 The bunker's game in your own living room, through the phone's camera.
 Asked for (2026-10-31): printed markers, one per sheet, at least eight; a
@@ -575,7 +652,7 @@ better, from two markers in view at once (the line between them). Then the
 position: each marker's known place minus (yaw x sensor rotation x its
 offset from the camera) - only the marker's centre and distance, which are
 solid, and the sensors' rotation, which is smooth. A leap of over 1.5 m is
-believed only after four agreeing sightings; otherwise the position glides
+believed only after three agreeing sightings; otherwise the position glides
 to each new fix over about 0.1 s (by time, not frames - per-frame smoothing
 crept for seconds when frames were slow). Between sightings the phone
 stays where it was last seen to be; the view still turns freely with the
@@ -668,8 +745,12 @@ over mid-wave, and a new phone joins the new host. Screenshots in `shots/`.
   accelerometer, the frame rate with detection every frame, and battery.
   iPhones: camera needs https and a tap (both there); Safari's motion
   permission is asked in the same tap.
-- **Haunted House, not built:** battery saving (look for markers less often
-  in full immersion), naming portals ("kitchen window"), a portal's size
-  set by hand, a TV view, a second room per set.
+- **Markers in Space and the Bunker have never been used on a real phone.**
+  Check: whether tapping corners on the floor lands where aimed (it needs a
+  recent marker sighting and the phone's height from the markers); how
+  walking feels with positions held between sightings and gliding (the
+  accelerometer could carry them, as dry-fly-phone's `rodsense.js` does
+  hand travel); the camera restarting each break on an iPhone (does Safari
+  ask again?); battery.
 - Ideas not built: a "spotter" role for a phone that just points and tags
   enemies for others, a radar sphere, versus mode.

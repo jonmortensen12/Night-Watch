@@ -460,5 +460,28 @@ ok(H['4 average'].waves >= 4 && H['4 average'].waves <= 16, 'four: longer, but n
 ok(hrows.every(r => r.wt >= 20 && r.wt <= 120), 'waves take half a minute to two minutes');
 ok(hrows.every(r => r.broken >= 0.5), 'portals do get broken (repairing matters)');
 
+/* ================================================================ a bunker drawn round a room */
+console.log('the bunker drawn on a floor (printed markers, Walk the room)');
+{
+  const {fenceLayout} = await import('./web/markers/room.js');
+  const L = fenceLayout({v: 2, markers: {}, ceil: 2.4}, [[-1.8, -2.2], [1.7, -2.2], [1.7, 1.9], [-1.8, 1.9]]);
+  ok(L.fence && L.portals.length === 8 && L.portals.every(p => p.y0 === 0), `a 3.5 x 4.1 m floor makes ${L.portals.length} fence sections`);
+  const S = ZB.create(31, L);
+  ZB.join(S, 'a', 'Ann'); ZB.start(S);
+  for(let i = 0; i < 60 * 5; i++) ZB.step(S, DT);
+  ok(S.focus.length === 8, 'every wave may come at any side of it, as in the square bunker');
+  ok(!S.ev.some(e => e[0] === 'focus'), 'and nobody is told "coming through..." (that is the Haunted House)');
+  const rows = [];
+  for(const [label, n] of [['1 average', 1], ['2 average', 2], ['4 average', 4]]){
+    const res = [];
+    for(let seed = 1; seed <= 4; seed++) res.push(zplay(n, seed, AVG, 25, L));
+    const waves = res.map(r => r.S.wave), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+    rows.push({label, waves: mean(waves), wt: mean(res.flatMap(r => r.waveTimes))});
+    console.log(`  ${label.padEnd(10)} waves ${waves.join(',').padEnd(14)} mean ${mean(waves).toFixed(1)}  ${mean(res.flatMap(r => r.waveTimes)).toFixed(0)} s/wave`);
+  }
+  ok(rows[0].waves >= 3 && rows[0].waves <= 14, 'one defender walking a living room lasts a handful of waves');
+  ok(rows.every(r => r.wt >= 20 && r.wt <= 120), 'waves take half a minute to two minutes');
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall good');
 process.exit(fails ? 1 : 0);

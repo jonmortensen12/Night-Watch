@@ -136,7 +136,7 @@ td.r { text-align: right; }
       <button class="big go" id="enterBtn" type="submit">ENTER THE HOUSE</button>
     </form>
     <p class="msg" id="startMsg"></p>
-    <p class="small">No markers yet? <a href="print.html">Print a set</a> - one sheet each, eight or so.<br>The phone's camera finds the markers; allow it when asked.<br>Not in the house? <a href="../play.html">Space and the Bunker</a> need no markers.</p>
+    <p class="small">No markers yet? <a href="../markers/print.html">Print a set</a> - one sheet each, eight or so.<br>The phone's camera finds the markers; allow it when asked.<br>Not in the house? <a href="../play.html">Space and the Bunker</a> need no markers.</p>
   </div>
 </div>
 
@@ -193,8 +193,8 @@ import * as SND from '../sound.js';
 import {createHost, PROTO} from '../host.js';
 import {createZombiePhone} from '../zombie-phone.js';
 import {awards, MONSTERS, COLORS, sectionsOf, HAUNT_REACH} from '../zsim.js';
-import {Detector} from './markers.js';
-import {Survey, Locator, Focal, makeLayout} from './room.js';
+import {Detector} from '../markers/markers.js';
+import {Survey, Locator, Focal, makeLayout} from '../markers/room.js';
 import {Haunt} from './view.js';
 
 const $ = id => document.getElementById(id);
@@ -225,7 +225,7 @@ let src = null;            // {el, vw, vh}: the picture, and its size
 let det = null, focal = null, gray = null, detScale = 1;
 async function startCamera(){
   if(SIM){
-    const {createSimCam} = await import('./simcam.js');
+    const {createSimCam} = await import('../markers/simcam.js');
     simcam = createSimCam({sensorYaw: +(params.get('syaw') || 0.6)});
     simcam.render();
     src = {el: simcam.canvas, vw: simcam.w, vh: simcam.h};
@@ -311,7 +311,7 @@ SND.setScale(true);
 let locator = new Locator(null), loc = {P: null, yaw: null, fix: 1e9, seen: []};
 let survey = null;
 const zctl = createZombiePhone({
-  view, sd: [], reach: HAUNT_REACH,
+  view, sd: [], reach: HAUNT_REACH, haunt: true,
   where: () => loc.P,
   tx, SND, banner, toast, callout, buzz,
   me: () => me.c, isDrag: () => false, look: () => {},

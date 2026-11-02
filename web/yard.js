@@ -543,53 +543,90 @@ export class Yard {
     if(!this.tv) this.scene.add(this.mist);
   }
 
+  /* The fence: the square bunker's eight sections, or a fence drawn round a
+     real room (markers' "Walk the room") - any ring of sections in order.
+     A post at every section end, taller with a lantern where the fence turns
+     a corner; four planks a section; the floor is the ring's shape. */
   buildBunker(){
-    const floorT = plankFloorTex(); floorT.repeat.set(2, 2);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(HALF * 2, HALF * 2), new THREE.MeshStandardMaterial({map: floorT, roughness: 0.85}));
-    floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01;
-    this.scene.add(floor);
-    const wood = new THREE.MeshStandardMaterial({map: woodTex(true), roughness: 0.8, color: 0xffe0c8});
-    const post = new THREE.MeshStandardMaterial({map: woodTex(false), roughness: 0.85, color: 0xffd8c0});
-    const iron = new THREE.MeshStandardMaterial({color: 0x30302e, metalness: 0.7, roughness: 0.4});
-    this.wood = wood;
-    // posts at the corners (with lanterns) and between each pair of sections
+    const sd = this.sd;
+    const g = this.fence = new THREE.Group();
+    this.scene.add(g);
+    const wood = this.wood || new THREE.MeshStandardMaterial({map: woodTex(true), roughness: 0.8, color: 0xffe0c8});
+    const post = this.postMat || new THREE.MeshStandardMaterial({map: woodTex(false), roughness: 0.85, color: 0xffd8c0});
+    const iron = this.ironMat || new THREE.MeshStandardMaterial({color: 0x30302e, metalness: 0.7, roughness: 0.4});
+    this.wood = wood; this.postMat = post; this.ironMat = iron;
+    if(!this.floorTex){ this.floorTex = plankFloorTex(); }
+    // the floor: the shape the fence goes round
+    if(sd.length >= 3){
+      const shape = new THREE.Shape(sd.map(S => new THREE.Vector2(S.a[0], -S.a[1])));
+      const geo = new THREE.ShapeGeometry(shape);
+      // planks a metre and a bit wide, whatever the size
+      const uv = geo.attributes.uv;
+      for(let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / (HALF), uv.getY(i) / (HALF));
+      const floor = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({map: this.floorTex, roughness: 0.85}));
+      this.floorTex.wrapS = this.floorTex.wrapT = THREE.RepeatWrapping;
+      floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01;
+      g.add(floor);
+    }
     this.lanterns = [];
-    const posts = [[-HALF, -HALF], [HALF, -HALF], [HALF, HALF], [-HALF, HALF], [0, -HALF], [HALF, 0], [0, HALF], [-HALF, 0]];
-    posts.forEach(([x, z], i) => {
-      const corner = i < 4;
-      part(this.scene, new THREE.BoxGeometry(0.22, corner ? 1.75 : 1.45, 0.22), post, x, corner ? 0.875 : 0.725, z, 0, (i * 0.37) % 0.2);
+    sd.forEach((S, i) => {
+      const P = sd[(i + sd.length - 1) % sd.length];
+      // where this section starts: a corner if the fence turns there
+      const d0 = [P.b[0] - P.a[0], P.b[1] - P.a[1]], d1 = [S.b[0] - S.a[0], S.b[1] - S.a[1]];
+      const turn = Math.abs(Math.atan2(d0[0] * d1[1] - d0[1] * d1[0], d0[0] * d1[0] + d0[1] * d1[1]));
+      const corner = turn > 0.5;
+      const [x, z] = S.a;
+      part(g, new THREE.BoxGeometry(0.22, corner ? 1.75 : 1.45, 0.22), post, x, corner ? 0.875 : 0.725, z, 0, (i * 0.37) % 0.2);
       if(corner){
-        const l = new THREE.Group(); l.position.set(x, 1.95, z); this.scene.add(l);
+        const l = new THREE.Group(); l.position.set(x, 1.95, z); g.add(l);
         part(l, new THREE.BoxGeometry(0.2, 0.04, 0.2), iron, 0, -0.14, 0);
         part(l, new THREE.BoxGeometry(0.2, 0.04, 0.2), iron, 0, 0.14, 0);
         part(l, new THREE.BoxGeometry(0.13, 0.22, 0.13), new THREE.MeshBasicMaterial({color: hot(0xffb050, 2.4)}), 0, 0, 0);
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: this.T.glow, color: hot(0xff9a40, 1.2), blending: THREE.AdditiveBlending, depthWrite: false}));
         sp.scale.set(1.6, 1.6, 1); l.add(sp);
-        const light = new THREE.PointLight(0xffa050, 22, 14, 1.5);
-        l.add(light);
-        this.lanterns.push({light, sp, ph: Math.random() * 10});
+        // a few lanterns light the yard; past six they only cost frame rate
+        if(this.lanterns.length < 6){
+          const light = new THREE.PointLight(0xffa050, 22, 14, 1.5);
+          l.add(light);
+          this.lanterns.push({light, sp, ph: Math.random() * 10});
+        }
       }
     });
     // the sections: four planks each, and a health bar over each
-    this.sections = SECTIONS.map((S, i) => {
-      const g = new THREE.Group();
+    this.sections = sd.map((S, i) => {
+      const sg = new THREE.Group();
       const dx = S.b[0] - S.a[0], dz = S.b[1] - S.a[1], len = Math.hypot(dx, dz);
-      g.position.set(S.mid[0], 0, S.mid[1]);
-      g.rotation.y = Math.atan2(-dz, dx);
-      this.scene.add(g);
+      sg.position.set(S.mid[0], 0, S.mid[1]);
+      sg.rotation.y = Math.atan2(-dz, dx);
+      g.add(sg);
       const planks = [0.28, 0.58, 0.88, 1.18].map((y, k) => {
-        const p = part(g, new THREE.BoxGeometry(len - 0.26, 0.22, 0.07), wood, (Math.random() - 0.5) * 0.06, y + (Math.random() - 0.5) * 0.04, 0, 0, 0, (Math.random() - 0.5) * 0.06);
+        const p = part(sg, new THREE.BoxGeometry(Math.max(0.2, len - 0.26), 0.22, 0.07), wood, (Math.random() - 0.5) * 0.06, y + (Math.random() - 0.5) * 0.04, 0, 0, 0, (Math.random() - 0.5) * 0.06);
         p.userData.home = p.position.clone();
         return p;
       });
       // a red glow on the ground where a section is down
-      const warn = part(g, new THREE.PlaneGeometry(len, 1.2), new THREE.MeshBasicMaterial({map: this.T.glow, color: hot(0xff2020, 1.5), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0}), 0, 0.03, 0, -Math.PI / 2);
+      const warn = part(sg, new THREE.PlaneGeometry(len, 1.2), new THREE.MeshBasicMaterial({map: this.T.glow, color: hot(0xff2020, 1.5), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0}), 0, 0.03, 0, -Math.PI / 2);
       const bar = this.makeBar();
       bar.sprite.position.set(S.mid[0] + S.n[0] * 0.1, this.tv ? 2.6 : 1.72, S.mid[1] + S.n[1] * 0.1);
-      this.scene.add(bar.sprite);
-      return {g, planks, warn, bar, shown: 4, hp: 100, shake: 0};
+      g.add(bar.sprite);
+      return {g: sg, planks, warn, bar, shown: 4, hp: 100, shake: 0};
     });
-    this.debris = [];
+    this.debris = this.debris || [];
+    // where the TV looks from: the middle, far enough back to see it all
+    const c = sd.length ? [sd.reduce((a, S) => a + S.mid[0], 0) / sd.length, sd.reduce((a, S) => a + S.mid[1], 0) / sd.length] : [0, 0];
+    const ext = sd.length ? Math.max(...sd.map(S => Math.hypot(S.a[0] - c[0], S.a[1] - c[1]))) : HALF * Math.SQRT2;
+    this.middle = c;
+    this.extent = Math.max(0.55, ext / (HALF * Math.SQRT2));
+  }
+
+  /* A different fence (the lobby switched to a drawn bunker, or back). */
+  setSections(sd){
+    if(this.fence){ this.scene.remove(this.fence); }
+    this.sd = sd;
+    this.secs = sd.map(() => 100);
+    this.secHit = sd.map(() => 0);
+    for(const [id, e] of this.mons) this.remove(id, e);
+    this.buildBunker();
   }
 
   makeBar(){
@@ -1060,9 +1097,10 @@ export class Yard {
   updateTV(dt){
     // from behind and above the players, drifting a little
     const yaw = Math.sin(this.time * 0.05) * 0.22;
-    const r = 25;
-    this.cam.position.set(Math.sin(yaw) * r, 21, Math.cos(yaw) * r);
-    this.cam.lookAt(0, 0, -2.5);
+    const k = this.extent || 1, c = this.middle || [0, 0];
+    const r = 25 * k;
+    this.cam.position.set(c[0] + Math.sin(yaw) * r, 21 * k, c[1] + Math.cos(yaw) * r);
+    this.cam.lookAt(c[0], 0, c[1] - 2.5 * k);
   }
 
   adapt(dt){

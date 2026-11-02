@@ -4,7 +4,7 @@
 
    Every phone is a tab at haunt/?local=1&sim=1: the "network" is a
    BroadcastChannel between tabs, and the "camera" is a pretend living room
-   with markers taped up (web/haunt/simcam.js), drawn from wherever this
+   with markers taped up (web/markers/simcam.js), drawn from wherever this
    script stands the phone. Each phone's pretend motion sensors start from a
    different direction, as real ones do, so finding the room's yaw from the
    markers is tested too.
@@ -64,11 +64,10 @@ console.log('the print page');
   const p = await ctx.newPage();
   watchErrors(p, 'print');
   await p.setViewportSize({width: 900, height: 1200});
-  await p.goto(BASE + 'haunt/print.html#' + SET);
-  ok(await p.evaluate(() => NW_PRINT.code()) === SET, 'a set code in the link is the set printed');
-  ok(/\/haunt\/#TESTHH$/.test(await p.evaluate(() => NW_PRINT.url())), 'its QR code goes to the game with the code');
+  await p.goto(BASE + 'markers/print.html');
+  ok(/\/$/.test(await p.evaluate(() => NW_PRINT.url())), 'the cover\'s QR code goes to the game');
   const sheets = await p.$$('.sheet');
-  ok(sheets.length === 1 + 8 + 2, `cover, eight markers and a pair (${sheets.length} sheets)`);
+  ok(sheets.length === 1 + 8, `a cover and eight markers (${sheets.length} sheets)`);
   ok(await p.evaluate(() => document.getElementById('style').value) === 'hatch', 'ink saver is the default');
   // a printed marker, photographed (well, screenshotted) and read back, in
   // each style, sharp and small (as if from across the room)

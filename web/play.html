@@ -55,6 +55,7 @@ input { font: inherit; font-size: 18px; width: 100%; padding: 14px; border-radiu
 #pick { display: flex; gap: 8px; }
 #pick button { flex: 1; padding: 12px 6px; font-size: 16px; background: #0d1626; }
 #pick button.sel { background: #1d4f8a; border-color: #6fd4ff; box-shadow: 0 0 14px #1a8cff55; }
+body.locked .gamePick { display: none !important; }
 label { display: block; color: var(--dim); font-size: 13px; margin: 14px 0 6px; letter-spacing: 0.08em; text-transform: uppercase; }
 
 /* joining */
@@ -143,8 +144,8 @@ body.mode-zombie #top { justify-content: space-between; }
   <div class="card">
     <h1>NIGHT WATCH</h1>
     <p class="tag" id="joinTag">Your phone is a window into space. Find them. Shoot them.</p>
-    <label>Game</label>
-    <div id="pick">
+    <label class="gamePick">Game</label>
+    <div id="pick" class="gamePick">
       <button type="button" data-mode="space">🚀 SPACE</button>
       <button type="button" data-mode="zombie">🎃 BUNKER</button>
     </div>
@@ -159,7 +160,7 @@ body.mode-zombie #top { justify-content: space-between; }
     <p class="msg" id="joinMsg"></p>
     <div class="or">— no TV? —</div>
     <button class="big alt" id="hostBtn" type="button">START A GAME ON THIS PHONE</button>
-    <p class="small">Best on the floor or a swivel chair: enemies come from every direction, including under you.<br>Showing it on a TV? Open <a href="./" id="tvLink">the game</a> on the TV.<br>🏚️ <a href="haunt/">Haunted House</a>: the bunker in your own room, with printed markers.</p>
+    <p class="small">Best on the floor or a swivel chair: enemies come from every direction, including under you.<br>Showing it on a TV? Open <a href="./" id="tvLink">the game</a> on the TV.<br>Printed markers (optional, picked in the lobby): <a href="markers/print.html">print a set</a>.</p>
   </div>
 </div>
 
@@ -195,14 +196,22 @@ body.mode-zombie #top { justify-content: space-between; }
   <p class="sub" id="lobbySub">Look around: the whole sky is yours. Tap READY when you are.</p>
   <div id="qrBox"><canvas id="qr" width="168" height="168"></canvas><div class="code" id="qrCode"></div><div class="sub">Friends scan this, or open the game and type the code</div></div>
   <div class="crew" id="crew"></div>
-  <label>Game</label>
-  <div class="themes modes" id="modes">
+  <label class="gamePick">Game</label>
+  <div class="themes modes gamePick" id="modes">
     <button data-mode="space">🚀 SPACE</button>
     <button data-mode="zombie">🎃 BUNKER</button>
   </div>
   <p class="sub" id="modeHelp" style="margin:6px 0 0"></p>
   <label>Music</label>
   <div class="themes" id="themes"></div>
+  <label>Printed markers <a href="markers/print.html" style="color:var(--acc);text-transform:none;letter-spacing:0;font-size:12px" target="_blank">print</a></label>
+  <div class="themes" id="mkOpts">
+    <button data-mk="off">Off</button>
+    <button data-mk="face">Face the same way</button>
+    <button data-mk="walk">Walk the room</button>
+  </div>
+  <p class="sub" id="mkHelp" style="margin:6px 0 0"></p>
+  <div class="row" id="mkRow" style="display:none"><button class="alt" id="mkSetup">SET UP MARKERS</button></div>
   <div class="row"><button class="big go" id="readyBtn">READY</button></div>
   <div class="row" id="hostRow" style="display:none"><button class="big alt" id="startNow">START NOW</button></div>
   <p class="small" id="record"></p>
@@ -224,10 +233,18 @@ import {createHost, PROTO} from './host.js';
 import {COLORS, LASER, MISSILE, TYPES} from './sim.js';
 import * as SND from './sound.js';
 import {createZombiePhone} from './zombie-phone.js';
-import {awards as zAwards, SECTIONS, MONSTERS} from './zsim.js';
+import {awards as zAwards, SECTIONS, MONSTERS, ROOM, sectionsOf} from './zsim.js';
+import {createMarkerKit} from './markers/kit.js';
+import {insidePoly} from './markers/room.js';
 
 const $ = id => document.getElementById(id);
 const isLocal = NWNet.isLocal();
+/* /space/ and /bunker/ come here with ?game=: that game and no other */
+const GAME = ['space', 'zombie'].indexOf(new URLSearchParams(location.search).get('game')) >= 0 ? new URLSearchParams(location.search).get('game') : null;
+if(GAME){
+  document.body.classList.add('locked');
+  document.title = GAME === 'zombie' ? 'Night Watch: Bunker' : 'Night Watch: Space';
+}
 function box(){ return isLocal ? sessionStorage : localStorage; }
 function store(k, v){ try { box().setItem(k, v); } catch(e){} }
 function recall(k){ try { return box().getItem(k); } catch(e){ return null; } }
@@ -294,7 +311,40 @@ function useDrag(why){
 }
 
 const fwd = new THREE.Vector3(), upv = new THREE.Vector3();
+
+/* ---------- printed markers (optional; picked in the lobby) ----------
+   Off: LOCK FRONT, as always. Face the same way: the camera looks for
+   markers between waves and squares this phone up with the room. Walk the
+   room (the Bunker): the camera says where you are, and the fence is the
+   bunker drawn round the room. See markers/kit.js. */
+const m4 = new THREE.Matrix4();
+function rowMajor(q){ m4.makeRotationFromQuaternion(q); const e = m4.elements; return [e[0], e[4], e[8], e[1], e[5], e[9], e[2], e[6], e[10]]; }
+const SIMCAM = /[?&]sim=1/.test(location.search);
+const kit = createMarkerKit({
+  sensorQ, rowMajor, toast, buzz, sim: SIMCAM, simYaw: +(new URLSearchParams(location.search).get('syaw') || 0),
+  frontYaw: () => { const f = new THREE.Vector3(0, 0, -1).applyQuaternion(sensorQ); return Math.atan2(f.x, -f.z); },
+  send: L => tx({t: 'layout', L}),
+});
+let mkLayout = null, fenceKey = '', squared = false;
+function mkMode(){ return room && room.mk ? room.mk.mode : 'off'; }
+function fenceOn(){ return mode === 'zombie' && room && room.mk && room.mk.fence && mkLayout && mkLayout.portals; }
+/* The bunker's shape: drawn round the room, or the usual square. */
+function applyFence(){
+  const key = fenceOn() ? JSON.stringify(mkLayout.portals) : '';
+  if(key === fenceKey || !zctl) return;
+  fenceKey = key;
+  const sd = key ? sectionsOf(mkLayout) : SECTIONS;
+  zctl.yard.setSections(sd);
+  zctl.setSections(sd);
+}
+
 function updateView(){
+  // the markers know which way the room is: they win over LOCK FRONT
+  const ky = dragMode ? null : kit.yaw();
+  if(ky != null){
+    yawQ.setFromAxisAngle(Y, ky);
+    if(!squared){ squared = true; if($('lockScr').classList.contains('on')){ $('lockScr').classList.remove('on'); toast('Squared up from the markers'); } }
+  }
   if(dragMode){
     eul.set(dragPitch, dragYaw, 0, 'YXZ');
     viewQ.setFromEuler(eul);
@@ -373,7 +423,10 @@ function switchMode(m){
         dragYaw += dx * k; dragPitch = Math.max(-1.55, Math.min(1.55, dragPitch + dy * k));
       },
       onEvent: sharedEvent,
+      where: () => fenceOn() ? kit.pos() : null,
+      inside: (x, z) => fenceOn() ? insidePoly(mkLayout.boundary, x, z) : Math.abs(x) <= ROOM && Math.abs(z) <= ROOM,
     });
+    fenceKey = 'none';
     zctl.setActive(true);
     if(me.c >= 0) zctl.yard.setMe(me.c);
   } else {
@@ -399,13 +452,14 @@ let me = {c: -1}, S = null, room = null, roomTv = true;
 $('nameIn').value = myName;
 const hashCode = (location.hash || '').replace('#', '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
 $('codeIn').value = hashCode;
-$('tvLink').href = './?tv=1' + (isLocal ? '&local=1' : '');
+$('tvLink').href = 'tv.html?tv=1' + (GAME ? '&game=' + GAME : '') + (isLocal ? '&local=1' : '');
 
 /* The game can be picked before joining. Starting a game on this phone
    uses it; joining a TV's room switches the room to it only if it was
    actually tapped here (somebody joining late should not change everybody's
    game by accident - and the host ignores it once a game is running). */
 let pickMode = recall('nwatch_mode') === 'zombie' ? 'zombie' : 'space', pickTapped = false;
+if(GAME){ pickMode = GAME; pickTapped = true; }
 function paintPick(){
   [...$('pick').children].forEach(b => b.classList.toggle('sel', b.dataset.mode === pickMode));
   $('joinTag').textContent = pickMode === 'zombie'
@@ -456,7 +510,7 @@ $('hostBtn').addEventListener('click', () => {
   readName();
   begin();
   roomTv = false;
-  host = createHost({tv: false, onRoom: r => { room = r; drawRoom(); }});
+  host = createHost({tv: false, mode: GAME || undefined, onRoom: r => { room = r; drawRoom(); }});
   host.setMode(pickMode);
   localLink = host.local(myName, devId, onHost);
   $('netTag').textContent = NET_LABEL.host;
@@ -587,10 +641,14 @@ function onHost(d){
     world.setMe(d.c);
     if(zctl) zctl.yard.setMe(d.c);
     $('wave').style.color = COLORS[d.c];
+  } else if(d.t === 'layout'){
+    if(d.L && d.L.markers){ mkLayout = d.L; kit.setLayout(d.L); applyFence(); drawRoom(); }
   } else if(d.t === 's'){
     S = d; lastSnap = performance.now();
     switchMode(d.mode === 'zombie' ? 'zombie' : 'space');
-    if(d.ro){ room = d.ro; drawRoom(); }
+    if(d.ro){ room = d.ro; kit.setMode(mkMode()); drawRoom(); }
+    applyFence();
+    kit.setPhase(d.ph);
     if(mode === 'zombie') zctl.onSnap(d); else world.feed(d);
     state();
   }
@@ -626,7 +684,7 @@ function state(){
   if(phase === 'over' && was !== 'over') results();
   if(phase === 'over') $('againBtn').disabled = $('lobbyBtn').disabled = S.pt < 2.5;
   if(phase === 'count') banner(String(Math.ceil(S.pt)), mode === 'zombie' ? 'Keep them out of the bunker' : 'Find them. Shoot them.');
-  else if(phase === 'break') banner('WAVE ' + S.w + ' CLEARED', 'Next wave in ' + Math.ceil(S.pt) + (mode === 'zombie' ? ' - repair the walls!' : ' - point at FRONT and tap ⌖ to re-lock'));
+  else if(phase === 'break') banner('WAVE ' + S.w + ' CLEARED', 'Next wave in ' + Math.ceil(S.pt) + (mode === 'zombie' ? ' - repair the walls!' : kit.yaw() != null ? ' - glance at a marker' : ' - point at FRONT and tap ⌖ to re-lock'));
 }
 
 function banner(t, sub){
@@ -861,6 +919,7 @@ function drawRoom(){
     if(qrFor !== url){ qrFor = url; drawQr($('qr'), url); }
   } else if(host) $('lobbySub').textContent = room.status || '';
   const rm = room.mode || 'space';
+  drawMarkers(rm);
   [...$('modes').children].forEach(b => b.classList.toggle('sel', b.dataset.mode === rm));
   $('modeHelp').textContent = rm === 'zombie'
     ? 'Monsters attack the bunker from every side. Walk with the stick, turn with your body, switch guns at the top. Stand at a damaged wall and hold REPAIR. If one gets in, you lose.'
@@ -955,6 +1014,7 @@ function frame(){
   requestAnimationFrame(frame);
   const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
   lastT = now;
+  if(joined) kit.frame(dt);
   if(testTrack){
     const e = world.ents.get(testTrack);
     if(e) NW_TEST.aim(e.d.x, e.d.y, e.d.z); else testTrack = 0;
@@ -984,7 +1044,33 @@ requestAnimationFrame(frame);
 
 /* For netcheck: drive this phone without a phone. */
 let testTrack = 0;
+/* the lobby's marker row */
+function drawMarkers(rm){
+  const mm = mkMode(), has = room.mk ? room.mk.has : 0, bound = room.mk && room.mk.bound;
+  [...$('mkOpts').children].forEach(b => {
+    b.classList.toggle('sel', b.dataset.mk === mm);
+    if(b.dataset.mk === 'walk') b.style.display = rm === 'zombie' ? '' : 'none';
+  });
+  $('mkRow').style.display = mm === 'off' ? 'none' : '';
+  const walk = mm === 'walk';
+  $('mkSetup').textContent = !has ? 'SET UP MARKERS' : walk && !bound ? 'DRAW THE BUNKER' : 'SET UP MARKERS AGAIN';
+  $('mkHelp').textContent = mm === 'off' ? 'No markers: everybody points at FRONT and taps LOCK FRONT.'
+    : !has ? 'Nobody has set up the markers in this room yet. Tape them round the room, then tap SET UP MARKERS (one phone does it for everybody).'
+    : walk ? (bound ? 'Walk the room: your phone sees where you are and the bunker is the shape you drew. No camera? Use the stick.' : 'Now draw the bunker: SET UP MARKERS, turn round, then tap its corners on the floor.')
+    : rm === 'zombie' ? 'Between waves, glance at any marker and your phone squares itself up with everybody. Walk with the stick.'
+    : 'Between waves, glance at any marker and your phone squares itself up with everybody - no more re-locking.';
+  if(kit.error && mm !== 'off') $('mkHelp').textContent += ' (Camera: ' + kit.error + ')';
+}
+$('mkOpts').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  SND.unlock(); SND.sfx('click');
+  tx({t: 'markers', mode: b.dataset.mk});
+});
+$('mkSetup').addEventListener('click', () => { SND.unlock(); kit.startSetup(mkMode() === 'walk'); });
+
 window.NW_TEST = {
+  kit: () => kit, fence: () => fenceOn() ? mkLayout : null, go: () => tx({t: 'go'}), viewQ: () => viewQ.toArray(), tx: m => tx(m),
   track(id){ testTrack = id; },
   // behave as a phone with motion sensors does: the sky fires, the stick walks
   sensors(){ dragMode = false; sensing = true; document.body.classList.remove('drag'); },

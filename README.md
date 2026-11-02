@@ -22,13 +22,12 @@ between a pistol, a shotgun and a sniper rifle with a scope, and hold
 REPAIR at the walls they have battered. If one gets in, you lose. No
 blood — they go poof.
 
-**Haunted House** (`/haunt/`) is the bunker in your own living room. Print
-a set of markers (`/haunt/print.html`), tape them round the room - on the
-walls where monsters should break in, on the floor at doorways - and
-everybody scans the code on the first page. Through the phone's camera the
-walls open up into a graveyard, and the monsters come through the holes.
-Walk over to a hole to board it back up. When the witch comes she tears
-the roof off. Or switch to full immersion and the room is drawn instead.
+Each game has its own link: **`/space/`** and **`/bunker/`**.
+
+**Printed markers** (optional, `/markers/print.html`): tape them round the
+room and pick them in the lobby. Everybody's phone faces the same way with
+no LOCK FRONT. In the Bunker you can also walk the room for real: draw the
+bunker's corners on your floor with the phone, and walk to a wall to fix it.
 
 See `HANDOFF.md` for how it works and `CLAUDE.md` for the checks to run
 before shipping.

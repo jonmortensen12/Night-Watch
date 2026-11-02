@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Watch: Bunker</title>
+<meta property="og:title" content="Night Watch: Bunker">
+<meta property="og:image" content="../og.png">
+<link rel="icon" href="../icon-192.png">
+<script>
+/* /bunker/: a phone plays, a big screen is the TV. Either way, this game only.
+   ?tv=1 makes a phone or tablet the TV; the rest of the address is kept. */
+(function(){
+  var q = new URLSearchParams(location.search);
+  var phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+  var page = (q.has('tv') || q.has('watch') || !phone) ? '../tv.html' : '../play.html';
+  q.set('game', 'zombie');
+  location.replace(page + '?' + q.toString() + location.hash);
+})();
+</script>
+</head>
+<body style="background:#05070f"></body>
+</html>

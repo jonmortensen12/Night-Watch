@@ -30,7 +30,11 @@ export function createZombiePhone(ctx){
     const low = /[?&]q=low/.test(location.search);
     yard = new Yard(canvas, {mode: 'phone', low});
   } else canvas = yard.canvas;
-  const house = !!ctx.where;
+  // house: the Haunted House (its own words and rules). where(): this
+  // phone's place in the room, from printed markers, or null - and then the
+  // stick walks, as it always has. inside(x, z): a drawn fence's floor.
+  const house = !!ctx.haunt;
+  let tracked = false;
   let SD = ctx.sd || SECTIONS;
   const REACH = ctx.reach || REPAIR_REACH;
   const secName = i => SD[i] ? (house ? SD[i].name : SD[i].name + ' wall') : '';
@@ -57,7 +61,7 @@ export function createZombiePhone(ctx){
       #zstickHint { position: fixed; left: 18px; bottom: calc(30px + env(safe-area-inset-bottom)); z-index: 4; color: #ffffff55; font: 700 11px system-ui; letter-spacing: 0.1em; pointer-events: none; }
     </style>
     <canvas id="zhud"></canvas>
-    ${house ? '' : '<div id="zstickHint">◀ MOVE ▶</div>'}
+    <div id="zstickHint">◀ MOVE ▶</div>
     <div id="zguns">${WEAPONS.map((w, i) => `<button class="zb" data-w="${i}"><b>${ICON[i]}</b>${w.name.toUpperCase()}</button>`).join('')}</div>
     <button class="zb" id="zzoom">🔭<br>ZOOM</button>
     <button class="zb" id="zrep">🔨 HOLD TO REPAIR<small></small></button>
@@ -117,7 +121,7 @@ export function createZombiePhone(ctx){
     SND.unlock();
     if(e.target !== ui && e.target !== hud) return;
     ui.setPointerCapture(e.pointerId);
-    if(!stick && !house && inStickZone(e.clientX, e.clientY)){
+    if(!stick && !tracked && inStickZone(e.clientX, e.clientY)){
       stick = {id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY};
       return;
     }
@@ -177,7 +181,7 @@ export function createZombiePhone(ctx){
     phase = s.ph;
     const mine = (s.pl || []).find(p => p.c === ctx.me());
     // the host places us at the start of a game; after that we walk ourselves
-    if(mine && !house && (!placed || (was !== 'count' && phase === 'count') || phase === 'lobby')){ x = mine.x; z = mine.z; placed = true; }
+    if(mine && !tracked && (!placed || (was !== 'count' && phase === 'count') || phase === 'lobby')){ x = mine.x; z = mine.z; placed = true; }
     yard.feed(s);
     lastSecs = s.sec;
   }
@@ -238,16 +242,29 @@ export function createZombiePhone(ctx){
     if(keys.KeyA || keys.ArrowLeft) mx = -1;
     if(keys.KeyD || keys.ArrowRight) mx = 1;
     const fl = Math.hypot(fwd.x, fwd.z) || 1, fx = fwd.x / fl, fz = fwd.z / fl;
-    const canMove = phase !== 'over' && !repairing && !house;
+    const wp = ctx.where ? ctx.where() : null;
+    tracked = !!wp;
+    if(wp){ x = wp[0]; y = wp[1]; z = wp[2]; } else y = EYE;
+    const hint = $('#zstickHint');
+    if(hint) hint.style.display = tracked ? 'none' : '';
+    if(tracked && stick){ stick = null; stickV = {x: 0, y: 0}; }
+    const canMove = phase !== 'over' && !repairing && !tracked;
     const speed = MOVE_SPEED * (zoom ? 0.35 : 1);
-    if(house){ const p = ctx.where(); if(p){ x = p[0]; y = p[1]; z = p[2]; } }
     if(canMove && (mx || my)){
       const ml = Math.min(1, Math.hypot(mx, my));
       const vx = fx * -my + -fz * mx, vz = fz * -my + fx * mx, vl = Math.hypot(vx, vz) || 1;
-      x = Math.max(-ROOM, Math.min(ROOM, x + vx / vl * speed * ml * dt));
-      z = Math.max(-ROOM, Math.min(ROOM, z + vz / vl * speed * ml * dt));
+      let nx = x + vx / vl * speed * ml * dt, nz = z + vz / vl * speed * ml * dt;
+      if(ctx.inside){
+        // a drawn fence: slide along it rather than through it
+        if(ctx.inside(nx, nz)){ x = nx; z = nz; }
+        else if(ctx.inside(nx, z)) x = nx;
+        else if(ctx.inside(x, nz)) z = nz;
+      } else if(SD === SECTIONS){
+        x = Math.max(-ROOM, Math.min(ROOM, nx));
+        z = Math.max(-ROOM, Math.min(ROOM, nz));
+      } else { x = nx; z = nz; }
     }
-    yard.setView(viewQ, x, z, house ? y : undefined);
+    yard.setView(viewQ, x, z, y);
     SND.listen(fwd, up);
     SND.listenAt(x, y, z);
     // the section within reach that needs work
@@ -313,7 +330,7 @@ export function createZombiePhone(ctx){
       // arrows to trouble that is off screen: anything at the fence, ghosts, bombs, the witch
       for(const e of yard.mons.values()){
         const c = yard.centreOf(e);
-        const urgent = e.st === 2 || e.type === 'bomb' || (e.type === 'ghost' && Math.hypot(e.d.x - mapC[0], e.d.z - mapC[1]) < (house ? 7 : 12));
+        const urgent = e.st === 2 || e.type === 'bomb' || (e.type === 'ghost' && Math.hypot(e.d.x - mapC[0], e.d.z - mapC[1]) < (SD === SECTIONS ? 12 : 7));
         const atFence = e.st === 1 || urgent || e.type === 'witch';
         const pr = yard.project(c);
         if(pr.on){
@@ -386,7 +403,7 @@ export function createZombiePhone(ctx){
      its middle in the middle, close enough in to see the portals. */
   let mapC = [0, 0], mapR = 13;
   function fitMap(){
-    if(!house || !SD.length){ mapC = [0, 0]; mapR = house ? 6 : 13; return; }
+    if(SD === SECTIONS || !SD.length){ mapC = [0, 0]; mapR = SD === SECTIONS ? 13 : 6; return; }
     mapC = [SD.reduce((a, s) => a + s.mid[0], 0) / SD.length, SD.reduce((a, s) => a + s.mid[1], 0) / SD.length];
     mapR = Math.max(5, ...SD.map(s => Math.hypot(s.mid[0] - mapC[0], s.mid[1] - mapC[1]) * 1.8));
   }

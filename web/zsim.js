@@ -239,7 +239,8 @@ function planWave(S){
   if(S.haunt){
     // a wave comes at two or three of the portals, not all of them: somewhere
     // to stand, and somewhere to run to. Not the same ones twice running.
-    const n = S.sd.length, k = Math.min(n, w === 1 ? 1 : w < 4 ? 2 : 3);
+    // a bunker drawn round a room (layout.fence) is attacked from every side
+    const n = S.sd.length, k = S.layout && S.layout.fence ? n : Math.min(n, w === 1 ? 1 : w < 4 ? 2 : 3);
     const order = S.sd.map((_, i) => [i, rng(S) + (S.focus.indexOf(i) >= 0 ? 0.6 : 0)]).sort((a, b) => a[1] - b[1]);
     S.focus = order.slice(0, k).map(o => o[0]);
   }
@@ -251,7 +252,7 @@ function startWave(S){
   S.stats.waveReached = S.wave;
   planWave(S);
   S.ev.push(['wave', S.wave, isBossWave(S.wave) ? 1 : 0]);
-  if(S.haunt) S.ev.push(['focus'].concat(S.focus));
+  if(S.haunt && !(S.layout && S.layout.fence)) S.ev.push(['focus'].concat(S.focus));
   if(isBossWave(S.wave)) spawnWitch(S);
 }
 

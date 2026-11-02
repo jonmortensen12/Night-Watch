@@ -173,6 +173,20 @@ export class Survey {
   /* The finished plan: everything gone over again with the best focal
      length. Returns the layout (with .f, the focal length it used). */
   build(cam){
+    const L = makeLayout(this.finish(cam, false));
+    if(this.f) L.f = Math.round(this.f * 10) / 10;
+    return L;
+  }
+  /* Space and the Bunker: just where the markers are, at any angle (the back
+     of a couch, a bookcase). The frame is whatever the caller turned the
+     sensors into - for them, FRONT is -z. Returns {v: 2, markers, ceil, f}. */
+  buildMarkers(cam){
+    const markers = this.finish(cam, true);
+    const L = {v: 2, markers, ceil: CEIL};
+    if(this.f) L.f = Math.round(this.f * 10) / 10;
+    return L;
+  }
+  finish(cam, loose){
     if(cam){
       const f = this.calibrate(cam);
       const use = Object.assign({}, cam, {f: f || cam.f});
@@ -183,7 +197,7 @@ export class Survey {
     const marks = {};
     for(const id of Object.keys(this.seen).map(Number)){
       if(!this.placed(id)) continue;
-      const m = this.seen[id], o = orient(m.samples);
+      const m = this.seen[id], o = orient(m.samples, loose);
       if(!o) continue;
       marks[id] = {p: this.where(id), R: o.R, kind: o.kind};
     }
@@ -199,19 +213,25 @@ export class Survey {
       out[id] = {p: [m.p[0] - cx, m.kind === 'floor' ? 0 : m.p[1] - floorY, m.p[2] - cz].map(v => Math.round(v * 1000) / 1000),
         q: quatOfMat(m.R).map(v => Math.round(v * 10000) / 10000), kind: m.kind};
     }
-    const L = makeLayout(out);
-    if(this.f) L.f = Math.round(this.f * 10) / 10;
-    return L;
+    return out;
   }
 }
 
 /* How a marker lies, from its sightings: a wall or the floor, and its turn
    squared up to the room (walls stand straight, the floor is level). */
-function orient(samples){
+function orient(samples, loose){
   let n = [0, 0, 0], up = [0, 0, 0];
   for(const s of samples){ n = add(n, scale(s.n, s.tw)); up = add(up, scale(s.up, s.tw)); }
   if(Math.hypot(...n) < 1e-6) return null;
   n = norm(n);
+  if(loose && Math.abs(n[1]) > 0.2 && n[1] < 0.9){
+    // at a slant (the back of a couch): as it was seen
+    let Y = sub(up, scale(n, dot(up, n)));
+    if(Math.hypot(...Y) < 1e-6) return null;
+    Y = norm(Y);
+    const X = cross(Y, n);
+    return {kind: 'other', R: [X[0], Y[0], n[0], X[1], Y[1], n[1], X[2], Y[2], n[2]]};
+  }
   if(Math.abs(n[1]) < 0.5){
     // a wall: facing level; its own up stays in the wall
     const Z = norm([n[0], 0, n[2]]);
@@ -281,6 +301,65 @@ function windowSpan(y){
   return [y0, y1];
 }
 
+/* ================= a bunker on a drawn boundary ================= */
+/* The boundary is a ring of corners on the floor, [[x, z], ...] in the
+   room's frame. Each side becomes one or more fence sections of about
+   1.8 m, facing out, as zsim.js wants them; the bunker's fence is the
+   boundary. Null if the ring is not a usable shape. */
+export function boundaryProblem(B){
+  if(!B || B.length < 3) return 'Put down at least three corners';
+  let area = 0;
+  for(let i = 0; i < B.length; i++){ const a = B[i], b = B[(i + 1) % B.length]; area += a[0] * b[1] - b[0] * a[1]; }
+  if(Math.abs(area) / 2 < 2) return 'That is too small to play in (under 2 square metres)';
+  for(let i = 0; i < B.length; i++) for(let j = i + 1; j < B.length; j++){
+    if(Math.abs(i - j) <= 1 || (i === 0 && j === B.length - 1)) continue;
+    if(segCross(B[i], B[(i + 1) % B.length], B[j], B[(j + 1) % B.length])) return 'The lines cross - move a corner';
+  }
+  return null;
+}
+function segCross(p, q, r, s){
+  const d = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = d(r, s, p), d2 = d(r, s, q), d3 = d(p, q, r), d4 = d(p, q, s);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+export function insidePoly(B, x, z){
+  let inside = false;
+  for(let i = 0, j = B.length - 1; i < B.length; j = i++){
+    const [xi, zi] = B[i], [xj, zj] = B[j];
+    if((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+const SIDE = ['front', 'front right', 'right', 'back right', 'back', 'back left', 'left', 'front left'];
+export function fenceLayout(L, B){
+  const r3 = v => Math.round(v * 1000) / 1000;
+  let cx = 0, cz = 0;
+  for(const p of B){ cx += p[0]; cz += p[1]; }
+  cx /= B.length; cz /= B.length;
+  const portals = [], used = {};
+  for(let i = 0; i < B.length; i++){
+    const a = B[i], b = B[(i + 1) % B.length];
+    const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz);
+    if(len < 0.05) continue;
+    let n = [dz / len, -dx / len];
+    const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+    if(insidePoly(B, mx + n[0] * 0.05, mz + n[1] * 0.05)) n = [-n[0], -n[1]];
+    const k = Math.max(1, Math.round(len / 1.8));
+    for(let j = 0; j < k; j++){
+      const p0 = [a[0] + dx * j / k, a[1] + dz * j / k], p1 = [a[0] + dx * (j + 1) / k, a[1] + dz * (j + 1) / k];
+      const sx = (p0[0] + p1[0]) / 2 - cx, sz = (p0[1] + p1[1]) / 2 - cz;
+      const ang = Math.atan2(sx, -sz) * 180 / Math.PI;
+      let name = SIDE[((Math.round(ang / 45) % 8) + 8) % 8];
+      used[name] = (used[name] || 0) + 1;
+      portals.push({name, kind: 'fence', a: p0.map(r3), b: p1.map(r3), n: n.map(r3), y0: 0, y1: 1.3, ids: []});
+    }
+  }
+  // the same side twice: number them
+  const count = {};
+  for(const p of portals) if(used[p.name] > 1){ count[p.name] = (count[p.name] || 0) + 1; p.name += ' ' + count[p.name]; }
+  return Object.assign({}, L, {boundary: B.map(p => p.map(r3)), portals, fence: true});
+}
+
 /* ================= finding yourself ================= */
 export class Locator {
   constructor(layout, opts){
@@ -289,6 +368,8 @@ export class Locator {
     // ...and keeps believing it, unless markers seen in pairs say otherwise
     // (one marker's turn alone is a noisy witness)
     this.prior = this.yaw;
+    // how gently a new fix is glided to, seconds (gentle: the whole world moves)
+    this.glide = (opts && opts.glide) || 0.1;
     this.yaws = [];
     this.P = null;
     this.fixT = -1e9; this.t = 0;
@@ -351,13 +432,13 @@ export class Locator {
         // a leap: believe it only if the next sightings agree
         if(this.pending && Math.hypot(P[0] - this.pending[0], P[2] - this.pending[2]) < 0.4){ this.pendN++; }
         else { this.pending = P; this.pendN = 1; }
-        if(this.pendN >= 4){ this.P = P; this.pending = null; }
+        if(this.pendN >= 3){ this.P = P; this.pending = null; }
       } else {
         this.pending = null;
         if(!this.P || !fresh) this.P = P;
         else {
           // glide there over about a tenth of a second, however often frames come
-          const k = 1 - Math.exp(-(this.t - this.fixT) / 0.1);
+          const k = 1 - Math.exp(-(this.t - this.fixT) / this.glide);
           this.P = add(this.P, scale(sub(P, this.P), k));
         }
       }
