@@ -19,7 +19,7 @@ import {UnrealBloomPass} from './lib/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from './lib/postprocessing/OutputPass.js';
 import {Particles, Beam, glowTex, canvasTex, textSprite, hot} from './world.js';
 import {MONSTERS, MONSTER_LIST, SECTIONS, HALF, EYE, COLORS, WEAPONS, centre} from './zsim.js';
-import {buildGameDayMonster, buildMini, buildStadium, fieldTex} from './gameday.js';
+import {buildGameDayMonster, buildMini, buildStadium, fieldTex, buildCannon, buildByuAvatar} from './gameday.js';
 
 export const MOON_DIR = new THREE.Vector3(0.45, 0.42, -0.78).normalize();   // front right, high
 
@@ -783,7 +783,7 @@ export class Yard {
       want.add(p.c);
       let a = this.avatars.get(p.c);
       if(!a){
-        const mesh = buildAvatar(p.c, p.n);
+        const mesh = this.look === 'gameday' ? buildByuAvatar(p.c, COLORS[p.c] || '#ffffff', (() => { const t = textSprite(p.n, COLORS[p.c], 0.16); t.material.opacity = 0.7; return t; })()) : buildAvatar(p.c, p.n);
         this.scene.add(mesh);
         a = {mesh, d: new THREE.Vector3(p.x, 0, p.z), sp: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, -1)};
         this.avatars.set(p.c, a);
@@ -866,7 +866,8 @@ export class Yard {
       const k = Math.min(1, m.t / m.dur);
       m.mesh.position.lerpVectors(m.from, m.to, k);
       m.mesh.position.y += Math.sin(k * Math.PI) * 0.15 * m.from.distanceTo(m.to) * 0.05;
-      m.mesh.rotateZ(m.spin * dt);
+      // a little wobble, never a roll: the face stays to the shooter
+      m.mesh.rotateZ(Math.sin(m.t * 18) * dt * 0.6);
       if(k >= 1){
         m.on = false; m.mesh.visible = false;
         this.parts.burst(m.to, 6, 2, new THREE.Color(0.6, 1.0, 2.6), 0.09, 0.35);
@@ -900,6 +901,13 @@ export class Yard {
     this.scene.fog.color.set(gd ? 0x1a2238 : 0x161426);
     for(const [id, e] of this.mons) this.remove(id, e);
     for(const m of this.minis || []){ m.on = false; m.mesh.visible = false; }
+    // friends as BYU players (rebuilt on the next snapshot)
+    for(const [c, a] of this.avatars){ this.scene.remove(a.mesh); this.avatars.delete(c); }
+    // what you hold: t-shirt cannons
+    if(this.guns){
+      for(const g of this.guns) this.cam.remove(g);
+      this.guns = WEAPONS.map(w => { const g = gd ? buildCannon(w.key) : buildGun(w.key); g.visible = false; this.cam.add(g); return g; });
+    }
   }
 
   /* this phone's own shot, the moment the trigger goes */

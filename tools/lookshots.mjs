@@ -56,6 +56,13 @@ await ph.setViewportSize({width: 390, height: 780});
 await ph.goto(BASE + `web/play.html?local=1&game=zombie#${code}`);
 await ph.fill('#nameIn', 'Jon'); await ph.click('#joinBtn');
 await until(ph, () => NW_TEST.state().me >= 0);
+// a teammate, to be seen
+const amy = await ctx.newPage();
+amy.on('pageerror', e => errors.push('amy: ' + e.message));
+await amy.setViewportSize({width: 390, height: 780});
+await amy.goto(BASE + `web/play.html?local=1&game=zombie#${code}`);
+await amy.fill('#nameIn', 'Amy'); await amy.click('#joinBtn');
+await until(amy, () => NW_TEST.state().me >= 0);
 await wait(1500);
 await ph.screenshot({path: join(ROOT, `shots/look-${look}-lobby.png`)});
 await tv.screenshot({path: join(ROOT, `shots/look-${look}-tv-lobby.png`)});
@@ -75,6 +82,15 @@ async function shoot(ms, shotAt){
   }
 }
 await shoot(40000, 26000);
+// the teammate, seen from this phone
+{
+  await amy.evaluate(() => { NW_TEST.z().moveTo(-2.2, -2.4); NW_TEST.aim(-0.6, 0.15, -1); });
+  await ph.evaluate(() => NW_TEST.z().moveTo(1.6, 1.4));
+  await wait(1200);
+  await ph.evaluate(() => NW_TEST.aim(-3.8, -0.9, -3.8));
+  await wait(1500);
+  await ph.screenshot({path: join(ROOT, `shots/look-${look}-friend.png`)});
+}
 // Swoop: straight to wave 5
 await tv.evaluate(() => { const S = NW_TV.host().S; S.mons = []; S.wave = 4; S.phase = 'break'; S.phaseT = 0.5; });
 await until(tv, () => NW_TV.host().S.mons.some(m => m.type === 'witch'));

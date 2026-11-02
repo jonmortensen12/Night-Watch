@@ -385,14 +385,27 @@ the look changes; every rule is the same.
   wide), skeleton -> Utah receiver (carries a ball), brute -> Utah nose
   tackle (#99, 2.6 m), ghost -> a giant red foam finger ("#1 UTES") that
   drifts through the fence, bat -> flying footballs with red wings, witch ->
-  Swoop (red body, white chest with a red U and face, black brow, hooked
-  gold beak, broad wings that flap and glide, red tail, talons), pumpkin
-  bomb -> a red football bomb. Jerseys are canvas textures (number front
-  and back), helmets carry a U decal.
-- **The shots**: every tracer also launches a miniature (`launchMini`): a
-  BYU player flying Superman-style (pistol, shotgun - a spread of them), or
-  Cosmo in No. 00 royal blue (sniper). They fly at 26-40 m/s (the hit is
-  still decided at once, as always). A knocked-out monster bursts into blue,
+  Swoop, pumpkin bomb -> a red football bomb. Jerseys are canvas textures
+  (number front and back, sleeve stripes), Utah helmets carry the
+  interlocking UU.
+- **Swoop and Cosmo from their photos** (swoop.utah.edu; Deseret News,
+  2026-11): Swoop is a *brown* hawk mascot - rust-brown feathered head and
+  wings, a big open gold beak with a dark tip and a red mouth, gold round
+  the eyes, a white ruff, Utah's red No. 96 with white pants and gloves;
+  flying, he dives belly-down so the 96 faces the players below. Cosmo is
+  golden-tan and shaggy with a big cream muzzle and beard, white bushy
+  brows over squinting eyes, a pink nose, round ears, navy No. 00 with
+  white sleeve stripes, blue pants, white gloves.
+- **The shots**: the guns are t-shirt cannons (`buildCannon`: navy
+  barrels with a white stripe, a flared silver mouth with a rolled shirt
+  in it; one barrel, three for the O-LINE, a long one with a scope for
+  COSMO). Every tracer also launches a miniature (`launchMini`): a BYU
+  player flying Superman-style (PLAYER, O-LINE - a spread of them), or
+  Cosmo (COSMO). They fly tipped up 45 degrees off their line, with a
+  wobble and no roll, so from behind the cannon you see the jersey and the
+  face, not the shoes; 26-40 m/s (the hit is still decided at once).
+- **Friends** are BYU players (number by colour, helmet stripe in their
+  colour) holding a t-shirt cannon (`buildByuAvatar`). A knocked-out monster bursts into blue,
   white and yellow confetti instead of Halloween sweets.
 - **The yard**: a striped football field with yard lines every 5 yards,
   COUGARS and UTES painted in the end zones, goal posts, four floodlight

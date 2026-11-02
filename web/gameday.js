@@ -50,6 +50,16 @@ function jerseyTex(bg, fg, num){
     g.fillRect(0, 8, w, 6);
   });
 }
+/* Utah's interlocking U-U */
+function uuTex(fg){
+  const key = 'uu' + fg;
+  if(texCache[key]) return texCache[key];
+  return texCache[key] = canvasTex(128, 128, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = fg; g.font = '900 84px Impact, Arial Black, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('U', 48, 58); g.fillText('U', 80, 74);
+  });
+}
 /* a helmet decal: Utah's block U, BYU's Y */
 function decalTex(letter, fg, ring){
   const key = 'd' + letter + fg + ring;
@@ -85,7 +95,7 @@ export function buildPlayer(o, flashList){
   const solid = add(mat(o.jersey, 0.75));
   const pants = add(mat(o.pants, 0.6)), skin = add(mat(o.skin || 0x9a6a4a, 0.7));
   const shoe = mat(0x161616, 0.5), sock = mat(o.sock || o.jersey, 0.8);
-  const helmet = add(mat(o.helmet, 0.25, 0.25)), mask = mat(o.mask || 0x222222, 0.4, 0.5);
+  const helmet = add(mat(o.helmet, 0.5, 0.05)), mask = mat(o.mask || 0x222222, 0.5, 0.3);
   for(const s of [-1, 1]){
     const hip = U.limbs[s < 0 ? 'legL' : 'legR'] = pivot(g, s * 0.13 * w * k, 0.92 * k, 0);
     part(hip, new THREE.CylinderGeometry(0.1 * w * k, 0.085 * w * k, 0.5 * k, 10), pants, 0, -0.22 * k, 0);
@@ -100,7 +110,9 @@ export function buildPlayer(o, flashList){
     const sh = U.limbs[s < 0 ? 'armL' : 'armR'] = pivot(g, s * 0.36 * w * k, 1.5 * k, 0);
     part(sh, new THREE.CylinderGeometry(0.075 * w * k, 0.065 * w * k, 0.3 * k, 8), solid, 0, -0.12 * k, 0.02 * k);
     part(sh, new THREE.CylinderGeometry(0.055 * w * k, 0.05 * w * k, 0.36 * k, 8), skin, 0, -0.42 * k, 0.1 * k, -0.35);
-    part(sh, new THREE.SphereGeometry(0.06 * w * k, 8, 6), mat(0x111111, 0.6), 0, -0.62 * k, 0.17 * k);
+    part(sh, new THREE.SphereGeometry(0.06 * w * k, 8, 6), mat(o.glove != null ? o.glove : 0x111111, 0.6), 0, -0.62 * k, 0.17 * k);
+    // sleeve stripes
+    if(o.sleeve != null) part(sh, new THREE.CylinderGeometry(0.078 * w * k, 0.076 * w * k, 0.035 * k, 10), mat(o.sleeve, 0.7), 0, -0.2 * k, 0.03 * k);
   }
   // the helmet: shell, stripe, decals, facemask, and a face behind it
   const head = U.limbs.head = pivot(g, 0, 1.78 * k, 0);
@@ -124,9 +136,9 @@ export function buildPlayer(o, flashList){
 }
 
 const UTAH = (num, extra) => Object.assign({jersey: UTAH_RED, num, numCol: '#ffffff', pants: 0xf2f2f2, helmet: UTAH_RED, mask: 0x111111,
-  stripe: 0xffffff, sock: 0xcc0000, decal: decalTex('U', '#ffffff', null)}, extra || {});
+  stripe: 0xffffff, sock: 0xcc0000, decal: uuTex('#ffffff'), sleeve: 0xffffff}, extra || {});
 const BYU = (num, extra) => Object.assign({jersey: BYU_BLUE, num, numCol: '#ffffff', pants: 0xf4f4f4, helmet: 0xf6f6f6, mask: 0x0b3d91,
-  stripe: BYU_BLUE, sock: 0x0b3d91, decal: decalTex('Y', '#0b3d91', null)}, extra || {});
+  stripe: BYU_BLUE, sock: 0x0b3d91, decal: decalTex('Y', '#0b3d91', null), sleeve: 0xffffff, glove: 0xf4f4f4}, extra || {});
 
 /* ---------- the monsters ---------- */
 export function buildGameDayMonster(type, T, glowTex, hot){
@@ -190,63 +202,72 @@ export function buildGameDayMonster(type, T, glowTex, hot){
     return g;
   }
   if(type === 'witch'){
-    // Swoop: a red-tailed hawk in Utah red, white chest and face, black
-    // brows, a hooked yellow beak and talons, wings out, flying along +z
-    const red = mat(0xb3120f, 0.8), white = mat(0xf4f1ea, 0.85), black = mat(0x141414, 0.7), gold = mat(0xf2b400, 0.5), dark = mat(0x5e0a08, 0.85);
-    U.flash.push(red, white);
-    part(g, new THREE.SphereGeometry(0.4, 18, 14), red, 0, 0, 0).scale.set(0.8, 0.68, 1.75);          // body
-    part(g, new THREE.SphereGeometry(0.34, 16, 12), white, 0, -0.1, 0.18).scale.set(0.74, 0.56, 1.3); // chest
-    // a red U on the white chest
-    const u = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), new THREE.MeshBasicMaterial({map: decalTex('U', '#cc0000', null), transparent: true, depthWrite: false}));
-    u.rotation.x = Math.PI / 2; u.position.set(0, -0.3, 0.22); g.add(u);
-    const head = U.limbs.head = pivot(g, 0, 0.3, 0.58);
-    part(head, new THREE.SphereGeometry(0.27, 18, 14), red, 0, 0, 0);
-    part(head, new THREE.SphereGeometry(0.2, 14, 10), white, 0, -0.05, 0.12).scale.set(1.1, 0.9, 0.9);
-    // the brow: a stern black V
+    // Swoop, flying: the mascot as he is - a brown red-tailed hawk in Utah's
+    // red No. 96 and white pants, gold beak wide open, gold round the eyes,
+    // a white ruff at the neck, white gloves - stretched out like a dive,
+    // wings out, along +z. The number is on his belly: you look up at him.
+    const brown = mat(0x7a3d1e, 0.95), dark = mat(0x4a2210, 0.95), light = mat(0xa8673a, 0.95);
+    const gold = mat(0xe7b52c, 0.45), black = mat(0x1a1a1a, 0.5), white = mat(0xf6f3ec, 0.9), mouth = mat(0xb01818, 0.6);
+    U.flash.push(brown, gold);
+    const jersey = add2(mat(0xffffff, 0.75, 0, {map: jerseyTex(UTAH_RED, '#ffffff', '96')}));
+    function add2(m){ U.flash.push(m); return m; }
+    const torso = part(g, new THREE.CylinderGeometry(0.36, 0.32, 0.95, 18), jersey, 0, 0, 0.05, Math.PI / 2);
+    part(g, new THREE.BoxGeometry(0.9, 0.28, 0.42), mat(UTAH_RED, 0.75), 0, 0.02, 0.38);                       // shoulder pads
+    part(g, new THREE.TorusGeometry(0.26, 0.12, 8, 16), white, 0, 0.02, 0.58);                                    // the ruff
+    // legs trailing, white pants, brown feathered feet
     for(const s of [-1, 1]){
-      part(head, new THREE.BoxGeometry(0.2, 0.05, 0.06), black, s * 0.1, 0.11, 0.21, 0, 0, -s * 0.35);
-      part(head, new THREE.SphereGeometry(0.045, 10, 8), mat(0xfff4c0, 0.3), s * 0.1, 0.04, 0.22);
-      part(head, new THREE.SphereGeometry(0.022, 8, 6), black, s * 0.1, 0.04, 0.26);
+      part(g, new THREE.CylinderGeometry(0.12, 0.1, 0.7, 10), white, s * 0.14, -0.02, -0.75, Math.PI / 2);
+      part(g, new THREE.ConeGeometry(0.11, 0.3, 8), gold, s * 0.14, -0.04, -1.2, -Math.PI / 2);
     }
-    // the hooked beak
-    part(head, new THREE.ConeGeometry(0.09, 0.26, 10), gold, 0, -0.03, 0.34, Math.PI / 2);
-    part(head, new THREE.ConeGeometry(0.05, 0.1, 8), gold, 0, -0.1, 0.44, Math.PI);
-    // the head feathers swept back
-    for(let i = 0; i < 3; i++) part(head, new THREE.ConeGeometry(0.07, 0.3, 6), red, (i - 1) * 0.1, 0.12, -0.26, -Math.PI / 2.6);
-    // wings: red, darker coverts, white bars, black tips; pivot at the shoulder
+    // the tail: red-tailed - rust feathers fanned between the legs
+    for(let i = -2; i <= 2; i++){
+      const f = part(g, new THREE.BoxGeometry(0.15, 0.03, 0.7), i % 2 ? light : brown, i * 0.08, 0.14, -0.85, 0.15, i * 0.16, 0);
+      f.geometry.translate(0, 0, -0.15);
+    }
+    // the head: big and furry, the beak wide open
+    const head = U.limbs.head = pivot(g, 0, 0.12, 0.92);
+    part(head, new THREE.SphereGeometry(0.36, 20, 16), brown, 0, 0, 0).scale.set(1, 0.95, 1);
+    for(let i = 0; i < 7; i++) part(head, new THREE.ConeGeometry(0.06, 0.26, 5), i % 2 ? dark : light, (i - 3) * 0.09, 0.25 + Math.cos((i - 3) / 3) * 0.04, -0.2, -Math.PI / 2.4);  // tufts
+    for(const s of [-1, 1]){
+      const ring = part(head, new THREE.SphereGeometry(0.12, 12, 10), gold, s * 0.15, 0.08, 0.24); ring.scale.set(1.1, 0.9, 0.6);
+      part(head, new THREE.SphereGeometry(0.06, 10, 8), black, s * 0.15, 0.09, 0.3);
+      part(head, new THREE.SphereGeometry(0.018, 6, 4), white, s * 0.15 + 0.02, 0.11, 0.355);
+      part(head, new THREE.BoxGeometry(0.17, 0.05, 0.06), dark, s * 0.15, 0.2, 0.28, 0, 0, -s * 0.3);                   // brow
+    }
+    // the beak: an open gold beak with a dark hooked tip, red inside
+    const upper = pivot(head, 0, 0.0, 0.3);
+    part(upper, new THREE.ConeGeometry(0.22, 0.5, 12), gold, 0, 0, 0.2, Math.PI / 2).scale.set(1.15, 1, 0.75);
+    part(upper, new THREE.ConeGeometry(0.08, 0.16, 8), black, 0, -0.05, 0.47, Math.PI * 0.62);
+    upper.rotation.x = -0.25;
+    const lower = U.limbs.jaw = pivot(head, 0, -0.1, 0.28);
+    part(lower, new THREE.ConeGeometry(0.17, 0.36, 12), gold, 0, 0, 0.14, Math.PI / 2).scale.set(1.15, 1, 0.5);
+    lower.rotation.x = 0.45;
+    part(head, new THREE.SphereGeometry(0.15, 10, 8), mouth, 0, -0.08, 0.32).scale.set(1.1, 0.7, 1);
+    // wings: his arms - brown, feathered, gloved
     U.wings = [];
     for(const s of [-1, 1]){
-      const wp = pivot(g, s * 0.32, 0.12, 0.12);
-      // a broad hawk's wing: leading edge forward, fingered primaries at the tip
+      const wp = pivot(g, s * 0.38, 0.06, 0.32);
       const sh = new THREE.Shape();
-      sh.moveTo(0, 0.3); sh.quadraticCurveTo(0.8, 0.45, 1.55, 0.28); sh.lineTo(1.85, 0.05);
-      for(let i = 0; i < 5; i++){ const x = 1.85 - i * 0.16; sh.lineTo(x - 0.05, -0.32 - i * 0.05); sh.lineTo(x - 0.13, -0.18); }
-      for(let i = 0; i < 6; i++){ const x = 1.05 - i * 0.18; sh.lineTo(x, -0.62 + Math.abs(i - 2) * 0.03); sh.lineTo(x - 0.09, -0.5); }
-      sh.lineTo(0, -0.4); sh.closePath();
-      const wing = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshStandardMaterial({color: 0xb3120f, side: THREE.DoubleSide, roughness: 0.85}));
+      sh.moveTo(0, 0.18); sh.quadraticCurveTo(0.8, 0.28, 1.5, 0.18); sh.lineTo(1.7, 0.02);
+      for(let i = 0; i < 6; i++){ const x = 1.6 - i * 0.26; sh.lineTo(x, -0.42 - (i % 2) * 0.08); sh.lineTo(x - 0.12, -0.24); }
+      sh.lineTo(0, -0.3); sh.closePath();
+      const wing = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshStandardMaterial({color: 0x7a3d1e, side: THREE.DoubleSide, roughness: 0.95}));
       wing.rotation.x = -Math.PI / 2;
-      const tips = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.42), new THREE.MeshStandardMaterial({color: 0x141414, side: THREE.DoubleSide, roughness: 0.8}));
-      tips.rotation.x = -Math.PI / 2; tips.position.set(1.6, 0.005, 0.12);
-      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.1), new THREE.MeshStandardMaterial({color: 0xf4f1ea, side: THREE.DoubleSide}));
-      bar.rotation.x = -Math.PI / 2; bar.position.set(0.75, 0.006, -0.05);
-      const holder = new THREE.Group(); holder.add(wing, tips, bar);
+      const edge = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.12), new THREE.MeshStandardMaterial({color: 0xa8673a, side: THREE.DoubleSide, roughness: 0.95}));
+      edge.rotation.x = -Math.PI / 2; edge.position.set(0.85, 0.006, 0.28);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.9, 8), new THREE.MeshStandardMaterial({color: UTAH_RED, roughness: 0.75}));
+      arm.rotation.z = Math.PI / 2; arm.position.set(0.45, 0.04, 0.12);
+      const glove = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshStandardMaterial({color: 0xf6f3ec, roughness: 0.8}));
+      glove.position.set(1.0, 0.06, 0.14);
+      const holder = new THREE.Group(); holder.add(wing, edge, arm, glove);
       if(s < 0) holder.scale.x = -1;
       wp.add(holder);
       U.wings.push(wp);
       U.limbs[s < 0 ? 'armL' : 'armR'] = new THREE.Group();          // the yard swings these; Swoop flaps instead
     }
-    // the red tail, fanned
-    for(let i = -2; i <= 2; i++){
-      const f = part(g, new THREE.BoxGeometry(0.13, 0.02, 0.55), i % 2 ? dark : red, i * 0.09, 0.02, -0.75, 0, i * 0.18, 0);
-      f.geometry.translate(0, 0, -0.1);
-    }
-    // talons
-    for(const s of [-1, 1]){
-      part(g, new THREE.CylinderGeometry(0.035, 0.03, 0.25, 6), gold, s * 0.15, -0.38, -0.05, 0.4);
-      for(let i = -1; i <= 1; i++) part(g, new THREE.ConeGeometry(0.018, 0.1, 5), black, s * 0.15 + i * 0.035, -0.52, 0.02, Math.PI * 0.6);
-    }
-    U.glow = glowSprite(0xff4020, 3.2, 0, 0, -0.4);
-    U.trail = [2.6, 0.5, 0.4];
+    U.glow = glowSprite(0xff6a30, 3.0, 0, 0, -0.6);
+    U.trail = [2.6, 0.9, 0.4];
+    g.userData.scale = 1.25;
     return g;
   }
   if(type === 'bomb'){
@@ -266,43 +287,107 @@ export function buildGameDayMonster(type, T, glowTex, hot){
    A miniature BYU player, flying arms-out like Superman; or (the scope's)
    a miniature Cosmo the Cougar, royal blue, No. 00. About 40 cm long. */
 export function buildMini(kind){
-  if(kind === 'cosmo') return buildCosmo(0.45);
-  const p = buildPlayer(BYU(String([2, 5, 8, 10, 12, 18, 22, 33][Math.floor(Math.random() * 8)])), []);
+  const p = kind === 'cosmo' ? cosmoFigure() : buildPlayer(BYU(String([2, 5, 8, 10, 12, 18, 22, 33][Math.floor(Math.random() * 8)])), []);
   const L = p.userData.limbs;
-  // the Superman: lying along -z (the way it flies), arms ahead
+  // the Superman, arms ahead - tipped up 45 degrees off the line it flies
+  // along, so from behind the gun you see the jersey and the face, not the
+  // soles of the shoes
   L.armL.rotation.x = L.armR.rotation.x = -Math.PI * 0.95;
   L.armL.rotation.z = 0.15; L.armR.rotation.z = -0.15;
   L.legL.rotation.x = 0.15; L.legR.rotation.x = -0.1;
   const g = new THREE.Group();
-  p.rotation.x = -Math.PI / 2; p.position.z = 0.9;
+  p.rotation.x = -Math.PI / 4; p.position.set(0, -0.5, 0.65);
   g.add(p);
-  g.scale.setScalar(0.32);
+  g.scale.setScalar(kind === 'cosmo' ? 0.4 : 0.32);
   return g;
 }
-export function buildCosmo(size){
-  const g = new THREE.Group();
-  const p = buildPlayer(BYU('00', {helmet: 0xc58f55, stripe: null, decal: null, mask: 0xc58f55, skin: 0xc58f55, pants: BYU_BLUE, jersey: BYU_ROYAL}), []);
+
+/* Cosmo the Cougar: golden-tan and shaggy, a big cream muzzle and beard,
+   white bushy brows over squinting eyes, a pink nose, round ears; navy
+   No. 00 with white sleeve stripes, blue pants, white gloves. */
+export function cosmoFigure(){
+  const tan = 0xc99a52;
+  const p = buildPlayer(BYU('00', {helmet: tan, stripe: null, decal: null, mask: tan, skin: tan, pants: BYU_BLUE, jersey: 0x14306a, glove: 0xf6f6f6, sock: 0x14306a}), []);
   const head = p.userData.limbs.head;
   head.clear();
-  const fur = mat(0xc58f55, 0.9), muzzle = mat(0xf3e6d0, 0.9), nose = mat(0x3a2015, 0.6);
-  part(head, new THREE.SphereGeometry(0.25, 18, 14), fur, 0, 0.02, 0).scale.set(1.05, 0.95, 1);
-  part(head, new THREE.SphereGeometry(0.15, 14, 10), muzzle, 0, -0.07, 0.16).scale.set(1.15, 0.8, 0.9);
-  part(head, new THREE.SphereGeometry(0.045, 8, 6), nose, 0, -0.01, 0.29).scale.set(1.3, 0.8, 0.8);
+  const fur = mat(tan, 0.95), dark = mat(0x9a6f35, 0.95), cream = mat(0xf2ead8, 0.95), white = mat(0xffffff, 0.9), nose = mat(0xd88a8a, 0.6), ink = mat(0x2a1a10, 0.6);
+  head.position.y += 0.06;
+  part(head, new THREE.SphereGeometry(0.3, 20, 16), fur, 0, 0.04, 0).scale.set(1.05, 1, 0.95);
+  part(head, new THREE.SphereGeometry(0.18, 14, 10), dark, 0, 0.2, 0.08).scale.set(0.5, 0.5, 0.9);         // the darker forehead
+  part(head, new THREE.SphereGeometry(0.2, 16, 12), cream, 0, -0.1, 0.16).scale.set(1.25, 0.95, 0.85);     // muzzle and beard
+  part(head, new THREE.SphereGeometry(0.06, 10, 8), nose, 0, -0.01, 0.33).scale.set(1.4, 0.8, 0.8);
+  part(head, new THREE.BoxGeometry(0.08, 0.012, 0.01), ink, 0, -0.13, 0.33);                                 // the mouth
   for(const s of [-1, 1]){
-    part(head, new THREE.ConeGeometry(0.08, 0.14, 8), fur, s * 0.15, 0.24, -0.02, 0, 0, -s * 0.3);
-    part(head, new THREE.SphereGeometry(0.04, 8, 6), mat(0xffffff, 0.3), s * 0.085, 0.07, 0.21);
-    part(head, new THREE.SphereGeometry(0.022, 6, 4), mat(0x0a2a6a, 0.3), s * 0.085, 0.07, 0.245);
-    part(head, new THREE.BoxGeometry(0.1, 0.02, 0.02), mat(0x3a2015, 0.7), s * 0.09, 0.14, 0.22, 0, 0, -s * 0.25);
+    part(head, new THREE.CylinderGeometry(0.09, 0.09, 0.05, 14), fur, s * 0.21, 0.27, -0.03, Math.PI / 2, 0, 0);           // round ears
+    part(head, new THREE.CylinderGeometry(0.055, 0.055, 0.052, 12), dark, s * 0.21, 0.27, -0.02, Math.PI / 2, 0, 0);
+    part(head, new THREE.SphereGeometry(0.05, 10, 6), ink, s * 0.1, 0.08, 0.25).scale.set(1.2, 0.35, 0.5);                 // squinting eyes
+    part(head, new THREE.SphereGeometry(0.07, 10, 6), white, s * 0.11, 0.15, 0.24).scale.set(1.5, 0.55, 0.7);              // bushy white brows
   }
   // a tail
-  const tail = part(p, new THREE.CylinderGeometry(0.03, 0.04, 0.6, 6), fur, 0, 0.75, -0.3, -0.9);
-  part(tail, new THREE.SphereGeometry(0.05, 6, 4), mat(0x3a2015, 0.7), 0, 0.3, 0);
-  const L = p.userData.limbs;
-  L.armL.rotation.x = L.armR.rotation.x = -Math.PI * 0.95;
-  L.armL.rotation.z = 0.15; L.armR.rotation.z = -0.15;
-  p.rotation.x = -Math.PI / 2; p.position.z = 0.9;
+  const tail = part(p, new THREE.CylinderGeometry(0.03, 0.045, 0.6, 6), fur, 0, 0.75, -0.3, -0.9);
+  part(tail, new THREE.SphereGeometry(0.055, 6, 4), dark, 0, 0.3, 0);
+  return p;
+}
+export function buildCosmo(size){
+  const g = new THREE.Group(), p = cosmoFigure();
+  g.add(p); g.scale.setScalar(size / 1.9);
+  return g;
+}
+
+/* ---------- the t-shirt cannons ----------
+   What you hold, in place of the guns: a t-shirt cannon (one barrel), a
+   triple-barrel "O-line" cannon, and a long Cosmo cannon with a scope.
+   Same frame as yard.js's guns: pointing -z, muzzle in userData. */
+export function buildCannon(key){
+  const g = new THREE.Group();
+  const navy = mat(BYU_BLUE, 0.6, 0.15), silver = mat(0xb8bec8, 0.4, 0.6), black = mat(0x18181c, 0.7), white = mat(0xf4f4f4, 0.85);
+  const tank = mat(0x9aa4b4, 0.35, 0.6);
+  let muzzle;
+  // a barrel: navy with a white stripe, flared at the mouth, a rolled
+  // t-shirt (white, a blue band) loaded in it
+  const barrel = (x, y, z0, z1, r) => {
+    const len = z0 - z1;
+    part(g, new THREE.CylinderGeometry(r, r, len, 14), navy, x, y, (z0 + z1) / 2, Math.PI / 2);
+    part(g, new THREE.CylinderGeometry(r * 1.02, r * 1.02, len * 0.12, 14), white, x, y, z1 + len * 0.3, Math.PI / 2);
+    part(g, new THREE.CylinderGeometry(r * 1.45, r, 0.07, 14, 1, true), silver, x, y, z1 - 0.02, -Math.PI / 2);
+    part(g, new THREE.CylinderGeometry(r * 0.95, r * 0.95, 0.05, 12), white, x, y, z1 - 0.01, Math.PI / 2);
+    part(g, new THREE.TorusGeometry(r * 0.6, r * 0.2, 6, 12), navy, x, y, z1 - 0.04);
+  };
+  if(key === 'pistol'){
+    barrel(0, 0.01, -0.12, -0.46, 0.034);
+    part(g, new THREE.CylinderGeometry(0.024, 0.024, 0.14, 12), tank, 0, -0.05, -0.16, Math.PI / 2);
+    part(g, new THREE.BoxGeometry(0.035, 0.11, 0.05), black, 0, -0.07, -0.06, -0.25);
+    muzzle = new THREE.Vector3(0, 0.01, -0.5);
+  } else if(key === 'shotgun'){
+    for(const [x, y] of [[-0.04, 0.025], [0.04, 0.025], [0, -0.042]]) barrel(x, y, -0.14, -0.6, 0.03);
+    part(g, new THREE.CylinderGeometry(0.04, 0.04, 0.16, 14), tank, 0, -0.03, -0.1, Math.PI / 2);
+    part(g, new THREE.BoxGeometry(0.04, 0.12, 0.06), black, 0, -0.12, -0.04, -0.25);
+    muzzle = new THREE.Vector3(0, 0.0, -0.64);
+  } else {
+    barrel(0, 0.01, -0.1, -0.82, 0.03);
+    part(g, new THREE.CylinderGeometry(0.022, 0.022, 0.22, 12), black, 0, 0.07, -0.12, Math.PI / 2);
+    part(g, new THREE.CircleGeometry(0.02, 16), new THREE.MeshBasicMaterial({color: 0x5ab0ff}), 0, 0.07, -0.231);
+    part(g, new THREE.CylinderGeometry(0.03, 0.03, 0.16, 12), tank, 0, -0.045, -0.08, Math.PI / 2);
+    part(g, new THREE.BoxGeometry(0.04, 0.1, 0.26), black, 0, -0.04, 0.12, 0.15);
+    muzzle = new THREE.Vector3(0, 0.01, -0.86);
+  }
+  g.userData.muzzle = muzzle;
+  return g;
+}
+
+/* A friend in the bunker, as a BYU player holding a t-shirt cannon, facing
+   -z (as yard.js's avatars do); userData.arm is the aiming arm. */
+export function buildByuAvatar(color, hexColor, tag){
+  const g = new THREE.Group();
+  const p = buildPlayer(BYU(String(10 + color * 7), {stripe: new THREE.Color(hexColor).getHex()}), []);
+  p.rotation.y = Math.PI;
+  p.userData.limbs.armR.visible = false;
   g.add(p);
-  g.scale.setScalar(size / 1.9 * 2.2);
+  const arm = new THREE.Group(); arm.position.set(-0.36, 1.5, 0); g.add(arm);
+  part(arm, new THREE.CylinderGeometry(0.075, 0.065, 0.55, 8), mat(BYU_BLUE, 0.75), 0, 0, -0.25, Math.PI / 2);
+  const c = buildCannon('pistol'); c.position.set(0, -0.02, -0.3); arm.add(c);
+  g.userData.arm = arm;
+  if(tag){ tag.position.y = 2.15; g.add(tag); g.userData.tag = tag; }
   return g;
 }
 
