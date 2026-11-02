@@ -47,7 +47,11 @@ ol b { color: #fff; }
 .netkey { color: var(--dim); font-size: 0.9vw; }
 .hint { color: var(--dim); font-size: 1vw; margin-top: auto; }
 .hint b { color: var(--gold); }
-#modePick { display: flex; gap: 0.8vw; align-items: center; }
+#modePick, #lookPick { display: flex; gap: 0.8vw; align-items: center; }
+#lookPick { margin-bottom: 0.8vh; }
+#lookPick span { color: var(--dim); font-size: 1.05vw; }
+#lookPick button { white-space: nowrap; font-size: 1.15vw; padding: 0.8vh 1.2vw; background: #13203a; border-color: #2c4470; }
+#lookPick button.sel { background: linear-gradient(180deg, #2fb8ff, #1272d6); border-color: #6fd4ff; }
 #modePick span { color: var(--dim); font-size: 1.05vw; }
 #modePick button { white-space: nowrap; font-size: 1.15vw; padding: 0.8vh 1.2vw; background: #13203a; border-color: #2c4470; }
 #modePick button.sel { background: linear-gradient(180deg, #2fb8ff, #1272d6); border-color: #6fd4ff; }
@@ -125,6 +129,10 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
     <li>Pistol, shotgun or <b>sniper</b> (zoom!). Hold a finger on the right to fire.</li>
     <li>Stand at a damaged wall and <b>hold REPAIR</b>. If one gets in, you lose.</li>
   </ol>
+  <div id="lookPick"><span>Look:</span>
+    <button data-look="halloween">🎃 HALLOWEEN</button>
+    <button data-look="gameday">🏈 GAME DAY</button>
+  </div>
   <div id="modePick"><span>Game:</span>
     <button data-mode="space">🚀 SPACE</button>
     <button data-mode="zombie">🎃 BUNKER</button>
@@ -166,6 +174,7 @@ import {createHost, PROTO} from './host.js';
 import {COLORS, awards, TYPES} from './sim.js';
 import * as SND from './sound.js';
 import {createZombieTV} from './zombie-tv.js';
+import {NAMES as GD_NAMES} from './gameday.js';
 import {awards as zAwards, SECTIONS, MONSTERS} from './zsim.js';
 
 const $ = id => document.getElementById(id);
@@ -237,6 +246,8 @@ function drawRoom(){
     ways.some(p => p.net === 'relay') ? 'Some phones are going through the Cloudflare relay.' : 'Some phones are reaching this TV over the internet, not this Wi-Fi.') : '';
   switchMode(room.mode === 'zombie' ? 'zombie' : 'space');
   [...$('modePick').querySelectorAll('button')].forEach(b => b.classList.toggle('sel', b.dataset.mode === (room.mode || 'space')));
+  $('lookPick').style.display = (room.mode || 'space') === 'zombie' ? '' : 'none';
+  [...$('lookPick').querySelectorAll('button')].forEach(b => b.classList.toggle('sel', b.dataset.look === (room.look || 'halloween')));
   $('hint').innerHTML = n ? 'Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).' +
     (room.best ? '<br>Best here: wave ' + room.best + ' · ' + room.bestScore.toLocaleString() + ' points' : '') : 'Waiting for phones...';
 }
@@ -284,7 +295,7 @@ function switchMode(m){
 let zhud = null;
 function sharedEvent(ev){
   const k = ev[0], z = mode === 'zombie';
-  if(k === 'wave'){ SND.cue(z ? 'zwave' : 'wave'); banner('WAVE ' + ev[1], ev[2] ? (z ? 'The witch is coming' : 'Dreadnought inbound') : ''); }
+  if(k === 'wave'){ SND.cue(z ? 'zwave' : 'wave'); banner('WAVE ' + ev[1], ev[2] ? (z ? (ztv && ztv.yard.look === 'gameday' ? 'Swoop is coming' : 'The witch is coming') : 'Dreadnought inbound') : ''); }
   else if(k === 'clear') SND.cue(z ? 'zclear' : 'clear');
   else if(k === 'over') SND.cue(S && S.nr ? 'record' : z ? 'zover' : 'gameover');
   else if(k === 'count') SND.cue('count');
@@ -297,6 +308,7 @@ function onSnap(s){
   S = s;
   switchMode(s.mode === 'zombie' ? 'zombie' : 'space');
   if(s.ro && watching){ room = s.ro; setFence(room.mk && room.mk.fence ? watchedLayout : null); }
+  if(ztv && room && room.look && ztv.yard.look !== room.look) ztv.setLook(room.look);
   if(mode === 'zombie') ztv.onSnap(s); else world.feed(s);
   phase = s.ph;
   $('lobby').classList.toggle('off', phase !== 'lobby' || watching);
@@ -391,7 +403,7 @@ function zResults(){
   const aw = zAwards(pl), why = S.why;
   $('overTitle').textContent = 'THEY GOT IN!';
   $('overSub').innerHTML = '';
-  $('overSub').appendChild(document.createTextNode((why ? 'A ' + MONSTERS[why.type].name + ' came through the ' + SECTIONS[why.sec].name + ' wall' : 'The bunker fell') +
+  $('overSub').appendChild(document.createTextNode((why ? 'A ' + (ztv && ztv.yard.look === 'gameday' ? GD_NAMES[why.type] : MONSTERS[why.type].name) + ' came through the ' + ((ztv ? ztv.yard.sd : SECTIONS)[why.sec] || {name: ''}).name + ' wall' : 'The bunker fell') +
     ' on wave ' + S.w + ' · ' + pl.reduce((a, p) => a + p.s, 0).toLocaleString() + ' points together. '));
   if(S.nr){ const r = document.createElement('span'); r.className = 'record'; r.textContent = 'NEW RECORD!'; $('overSub').appendChild(r); }
   const t = $('results');
@@ -468,6 +480,10 @@ function drawHud(now){
 function soundTap(){ SND.unlock(); setTimeout(() => $('soundPill').classList.toggle('off', SND.soundOn()), 200); }
 addEventListener('pointerdown', soundTap);
 /* the TV picks the game too: click, or 1 / 2 */
+$('lookPick').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(b && host){ host.setLook(b.dataset.look); SND.sfx('click'); }
+});
 $('modePick').addEventListener('click', e => {
   const b = e.target.closest('button');
   if(b && host){ host.setMode(b.dataset.mode); SND.sfx('click'); }

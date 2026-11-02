@@ -19,6 +19,7 @@ import {UnrealBloomPass} from './lib/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from './lib/postprocessing/OutputPass.js';
 import {Particles, Beam, glowTex, canvasTex, textSprite, hot} from './world.js';
 import {MONSTERS, MONSTER_LIST, SECTIONS, HALF, EYE, COLORS, WEAPONS, centre} from './zsim.js';
+import {buildGameDayMonster, buildMini, buildStadium, fieldTex} from './gameday.js';
 
 export const MOON_DIR = new THREE.Vector3(0.45, 0.42, -0.78).normalize();   // front right, high
 
@@ -380,6 +381,7 @@ export class Yard {
   constructor(canvas, opts){
     this.opts = opts;
     this.sd = opts.sd || SECTIONS;       // the sections: the fence, or a house's portals
+    this.look = 'halloween';             // or 'gameday' (BYU vs Utah, gameday.js): setLook
     this.mode = opts.mode;
     this.tv = opts.mode === 'tv';
     this.low = !!opts.low;
@@ -521,8 +523,9 @@ export class Yard {
 
   buildGround(){
     const gt = grassTex(); gt.repeat.set(70, 70);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({map: gt, roughness: 1, color: 0x9aa890}));
+    const ground = this.ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({map: gt, roughness: 1, color: 0x9aa890}));
     ground.rotation.x = -Math.PI / 2;
+    this.grassTex = gt;
     this.scene.add(ground);
     // low mist drifting over the field
     const n = this.low ? 120 : 260;
@@ -661,6 +664,10 @@ export class Yard {
   }
 
   buildProps(){
+    // everything Halloween out in the yard, in one group the Game Day look hides
+    const spooky = this.spooky = new THREE.Group();
+    this.scene.add(spooky);
+    const scene = {add: o => spooky.add(o)};
     const rnd = (a, b) => a + Math.random() * (b - a);
     const clear = (x, z, r) => Math.abs(x) > HALF + r || Math.abs(z) > HALF + r;
     // gravestones
@@ -684,7 +691,7 @@ export class Yard {
       }
       g.position.set(x, 0, z);
       g.rotation.set(rnd(-0.12, 0.12), rnd(-0.6, 0.6) + Math.atan2(x, z), rnd(-0.12, 0.12));
-      this.scene.add(g);
+      scene.add(g);
     }
     // dead trees
     const bark = new THREE.MeshStandardMaterial({color: 0x2b2420, roughness: 1});
@@ -707,7 +714,7 @@ export class Yard {
       const t = new THREE.Group(); t.position.set(Math.sin(a) * r, 0, Math.cos(a) * r);
       t.rotation.set(rnd(-0.08, 0.08), rnd(0, 6), rnd(-0.08, 0.08));
       branch(t, rnd(2.5, 4.5), rnd(0.18, 0.3), 3);
-      this.scene.add(t);
+      scene.add(t);
     }
     // jack-o'-lanterns round the bunker
     const orange = new THREE.MeshStandardMaterial({color: 0xd8641a, roughness: 0.6});
@@ -723,7 +730,7 @@ export class Yard {
       face.position.set(0, 0, 0.23); face.rotation.y = 0; g.add(face);
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: this.T.glow, color: hot(0xff8a20, 0.9), blending: THREE.AdditiveBlending, depthWrite: false}));
       sp.scale.set(1.4, 1.4, 1); sp.position.z = 0.25; g.add(sp);
-      this.scene.add(g); this.jacks.push({sp, ph: Math.random() * 10});
+      scene.add(g); this.jacks.push({sp, ph: Math.random() * 10});
     }
     // will-o'-the-wisps
     this.wisps = [];
@@ -731,7 +738,7 @@ export class Yard {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: this.T.glow, color: hot(0x7affd0, 1.6), blending: THREE.AdditiveBlending, depthWrite: false}));
       sp.scale.set(0.5, 0.5, 1);
       sp.userData = {a: rnd(0, 6.28), r: rnd(12, 30), sp: rnd(0.03, 0.08) * (Math.random() < 0.5 ? 1 : -1), h: rnd(0.6, 2)};
-      this.scene.add(sp); this.wisps.push(sp);
+      scene.add(sp); this.wisps.push(sp);
     }
   }
 
@@ -749,7 +756,7 @@ export class Yard {
       let e = this.mons.get(id);
       const p = new THREE.Vector3(m[i + 2], m[i + 3], m[i + 4]);
       if(!e){
-        const mesh = buildMonster(type, this.T);
+        const mesh = this.look === 'gameday' ? buildGameDayMonster(type, this.T, this.T.glow, hot) : buildMonster(type, this.T);
         mesh.scale.setScalar((mesh.userData.scale || 1) * (this.tv ? 1.25 : 1));
         mesh.position.copy(p);
         this.scene.add(mesh);
@@ -828,9 +835,71 @@ export class Yard {
 
   /* ---------- effects ---------- */
   tracer(from, to, w, color){
+    if(this.look === 'gameday') this.launchMini(from, to, w);
     const b = this.beams.find(x => x.t <= 0) || this.beams[0];
     const c = w === 2 ? new THREE.Color(1.6, 1.8, 2.6) : new THREE.Color(2.4, 1.8, 0.9);
     b.set(from, to, c, w === 2 ? 0.03 : 0.018, w === 2 ? 0.16 : 0.06);
+  }
+
+  /* Game Day: what the guns fire flies the whole way - a miniature BYU
+     player (the scope: a miniature Cosmo), arms out, spinning a little. */
+  launchMini(from, to, w){
+    if(!this.minis) this.minis = [];
+    const kind = w === 2 ? 'cosmo' : 'player';
+    let m = this.minis.find(x => !x.on && x.kind === kind);
+    if(!m){
+      if(this.minis.length > 48) return;
+      m = {kind, mesh: buildMini(kind), on: false};
+      this.scene.add(m.mesh); this.minis.push(m);
+    }
+    const d = to.distanceTo(from);
+    m.on = true; m.t = 0; m.dur = Math.max(0.15, d / (w === 2 ? 40 : 26));
+    m.from = from.clone(); m.to = to.clone(); m.spin = (Math.random() - 0.5) * 6;
+    m.mesh.visible = true;
+    m.mesh.position.copy(from);
+    m.mesh.lookAt(to); m.mesh.rotateY(Math.PI);      // the minis fly along -z of their own
+  }
+  updateMinis(dt){
+    for(const m of this.minis || []){
+      if(!m.on) continue;
+      m.t += dt;
+      const k = Math.min(1, m.t / m.dur);
+      m.mesh.position.lerpVectors(m.from, m.to, k);
+      m.mesh.position.y += Math.sin(k * Math.PI) * 0.15 * m.from.distanceTo(m.to) * 0.05;
+      m.mesh.rotateZ(m.spin * dt);
+      if(k >= 1){
+        m.on = false; m.mesh.visible = false;
+        this.parts.burst(m.to, 6, 2, new THREE.Color(0.6, 1.0, 2.6), 0.09, 0.35);
+      }
+    }
+  }
+
+  /* The look: Halloween (the graveyard) or Game Day (a floodlit football
+     field, Utah monsters, BYU minis). Every monster is rebuilt as it comes. */
+  setLook(look){
+    look = look === 'gameday' ? 'gameday' : 'halloween';
+    if(look === this.look) return;
+    this.look = look;
+    const gd = look === 'gameday';
+    if(gd && !this.stadium){
+      this.stadium = buildStadium(this.T.glow, hot);
+      this.scene.add(this.stadium);
+      this.fieldTex = fieldTex(); this.fieldTex.repeat.set(300 / 9.2, 300 / 9.2);
+      this.floodlight = new THREE.DirectionalLight(0xfff2e0, 1.6);
+      this.floodlight.position.set(-20, 30, 20);
+      this.scene.add(this.floodlight);
+    }
+    if(this.stadium){ this.stadium.visible = gd; this.floodlight.visible = gd; }
+    this.spooky.visible = !gd;
+    if(this.mist) this.mist.visible = !gd;
+    this.ground.material.map = gd ? this.fieldTex : this.grassTex;
+    this.ground.material.color.set(gd ? 0xb8c8b0 : 0x9aa890);
+    this.ground.material.needsUpdate = true;
+    // the fence painted BYU blue
+    if(this.wood){ this.wood.color.set(gd ? 0x4a7dff : 0xffe0c8); this.wood.emissive.set(gd ? 0x0a2a7a : 0x000000); }
+    this.scene.fog.color.set(gd ? 0x1a2238 : 0x161426);
+    for(const [id, e] of this.mons) this.remove(id, e);
+    for(const m of this.minis || []){ m.on = false; m.mesh.visible = false; }
   }
 
   /* this phone's own shot, the moment the trigger goes */
@@ -853,6 +922,20 @@ export class Yard {
   }
 
   poof(p, type){
+    if(this.look === 'gameday'){
+      // knocked flat: a yellow flag, and confetti in BYU blue and white
+      const big = type === 'witch' ? 3 : type === 'brute' ? 1.6 : 1;
+      this.parts.burst(p, Math.round(30 * big), 3.5 * big, new THREE.Color(0.4, 0.9, 3.2), 0.2 * big, 1.0, true);
+      this.parts.burst(p, Math.round(24 * big), 3 * big, new THREE.Color(2.6, 2.6, 2.6), 0.16 * big, 1.1, true);
+      this.parts.burst(p, Math.round(8 * big), 2 * big, new THREE.Color(3, 2.6, 0.2), 0.3 * big, 0.9, true);
+      for(let i = 0; i < 16 * big; i++){
+        const c = [[0.4, 0.9, 3.2], [3, 3, 3], [3, 2.5, 0.3]][i % 3];
+        this.parts.emit(p.x, p.y, p.z, (Math.random() - 0.5) * 5, Math.random() * 4 + 1, (Math.random() - 0.5) * 5, c[0], c[1], c[2], 0.08, 1.3, 0.8, 0);
+      }
+      this.puff(p, Math.round(4 * big), new THREE.Color(0.55, 0.55, 0.6), 1.1 * big, 1.0);
+      if(type === 'witch'){ this.blast.position.copy(p); this.blast.intensity = 120; this.blast.color.set(0x4080ff); }
+      return;
+    }
     const cols = {pumpkin: [[3, 1.3, 0.2], [0.5, 1.6, 0.3]], skeleton: [[2.2, 2.1, 1.8], [1, 1, 1.1]], ghost: [[0.8, 1.6, 3], [2, 2.4, 3]],
       brute: [[0.7, 2.2, 0.5], [1.6, 1.4, 0.4]], bat: [[1.6, 0.5, 2.4], [2.6, 0.4, 0.5]], witch: [[0.7, 2.6, 0.4], [2, 0.6, 3]], bomb: [[3, 1.3, 0.2], [2, 2, 0.6]]}[type] || [[2, 2, 2], [1, 1, 1]];
     const big = type === 'witch' ? 3 : type === 'brute' ? 1.6 : 1;
@@ -1016,7 +1099,10 @@ export class Yard {
       } else if(e.type === 'witch'){
         m.rotation.z = Math.sin(t * 0.9) * 0.25;
         L.armL.rotation.x = Math.PI / 2.4 + Math.sin(t * 3) * 0.1;
-        if(Math.random() < dt * 30) this.parts.emit(e.d.x, e.d.y, e.d.z, (Math.random() - 0.5), -0.4, (Math.random() - 0.5), 0.6, 2.4, 0.4, 0.22, 1.2, 0.6, 0.5);
+        // Swoop flaps; a hawk glides between beats
+        if(U.wings){ const f = Math.sin(t * 5) * 0.55 * (0.6 + 0.4 * Math.sin(t * 0.7)); U.wings[0].rotation.z = f; U.wings[1].rotation.z = -f; }
+        const tc = U.trail || [0.6, 2.4, 0.4];
+        if(Math.random() < dt * 30) this.parts.emit(e.d.x, e.d.y, e.d.z, (Math.random() - 0.5), -0.4, (Math.random() - 0.5), tc[0], tc[1], tc[2], 0.22, 1.2, 0.6, 0.5);
       } else if(e.type === 'bomb'){
         m.rotation.x += dt * 5; m.rotation.z += dt * 3;
         if(Math.random() < dt * 30) this.parts.emit(e.d.x, e.d.y + 0.2, e.d.z, (Math.random() - 0.5), 0.5, (Math.random() - 0.5), 3, 2, 0.6, 0.08, 0.4, 1, 0);
@@ -1053,6 +1139,7 @@ export class Yard {
       b.mat.uniforms.uAlpha.value = Math.max(0, b.t / b.life);
       b.place(this.cam);
     }
+    this.updateMinis(dt);
     this.flashLight.intensity *= Math.exp(-dt * 30);
     this.blast.intensity *= Math.exp(-dt * 5);
     if(this.blast.intensity < 1) this.blast.color.set(0xff9a40);

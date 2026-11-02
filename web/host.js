@@ -150,6 +150,9 @@ export function createHost(opts){
       if(S.phase === 'over' && S.phaseT > 2.5){ G.toLobby(S); Object.values(people).forEach(q => { q.ready = false; }); roomDirty = true; }
     } else if(d.t === 'theme'){
       if(typeof d.key === 'string' && d.key.length < 24){ save.themes[mode] = d.key; themePicked = true; persist(); roomDirty = true; }
+    } else if(d.t === 'look'){
+      // the Bunker's look: Halloween, or Game Day (BYU vs Utah) - any time
+      if(d.key === 'halloween' || d.key === 'gameday'){ save.look = d.key; persist(); roomDirty = true; }
     } else if(d.t === 'markers'){
       // the lobby's marker setting, for the game being played
       if(MK_MODES[mode] && MK_MODES[mode].indexOf(d.mode) >= 0 && (S.phase === 'lobby' || S.phase === 'over')){
@@ -238,7 +241,7 @@ export function createHost(opts){
   function roomInfo(){
     const b = save.bests[mode];
     return {code: room.code, status: room.status, tv: room.tv, mode, theme: save.themes[mode], themePicked,
-      best: b.best, bestScore: b.bestScore,
+      best: b.best, bestScore: b.bestScore, look: save.look === 'gameday' ? 'gameday' : 'halloween',
       mk: {mode: (mk.mode[mode] || 'off'), has: mk.layout ? Object.keys(mk.layout.markers).length : 0, fence: walking() ? 1 : 0,
         bound: mk.layout && mk.layout.fence ? 1 : 0},
       people: Object.values(people).map(p => {
@@ -323,6 +326,7 @@ export function createHost(opts){
     fence: () => walking() ? mk.layout : null, markers: () => mk,
     // the TV's own keyboard
     key: k => { if(k === 'go') go(); },
+    setLook: key => fromPhone({id: '-', role: 'player'}, {t: 'look', key}),
     destroy: () => { dead = true; clearInterval(timer); if(handle) handle.destroy(); },
   };
   return api;

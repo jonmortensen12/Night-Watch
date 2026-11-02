@@ -10,6 +10,7 @@
    (no lag on your own feet); the host is told twenty times a second. */
 import * as THREE from 'three';
 import {Yard} from './yard.js';
+import {NAMES as GD_NAMES, GUN_NAMES as GD_GUNS} from './gameday.js';
 import {WEAPONS, MONSTERS, SECTIONS, ROOM, EYE, MOVE_SPEED, REPAIR_REACH, COLORS, toSection, sideWords} from './zsim.js';
 
 const ICON = ['🔫', '💥', '🎯'];
@@ -90,6 +91,18 @@ export function createZombiePhone(ctx){
     paintGuns();
     send();
   }
+  /* The look: Halloween, or Game Day (BYU vs Utah) - same game, new clothes */
+  let look = 'halloween';
+  function setLook(l){
+    look = l === 'gameday' ? 'gameday' : 'halloween';
+    yard.setLook(look);
+    ui.querySelectorAll('#zguns button').forEach(b => {
+      const i = +b.dataset.w;
+      b.innerHTML = look === 'gameday' ? `<b>${GD_GUNS[i][0]}</b>${GD_GUNS[i][1]}` : `<b>${ICON[i]}</b>${WEAPONS[i].name.toUpperCase()}`;
+    });
+    paintGuns();
+  }
+  const gd = () => look === 'gameday';
   function paintGuns(){
     ui.querySelectorAll('#zguns button').forEach(b => b.classList.toggle('sel', +b.dataset.w === w));
     $('#zzoom').style.display = WEAPONS[w].key === 'sniper' ? 'flex' : 'none';
@@ -205,12 +218,12 @@ export function createZombiePhone(ctx){
       SND.sfx('alarm', secPos(ev[2]));
       ctx.buzz([100, 50, 100]);
     } else if(k === 'fixed'){ ctx.toast(secName(ev[1]) + ' fixed'); }
-    else if(k === 'bomb'){ ctx.callout('PUMPKIN BOMB - ' + secName(ev[1]) + ' - shoot it!'); SND.sfx('whistle', secPos(ev[1])); }
+    else if(k === 'bomb'){ ctx.callout((gd() ? 'FOOTBALL BOMB - ' : 'PUMPKIN BOMB - ') + secName(ev[1]) + ' - shoot it!'); SND.sfx('whistle', secPos(ev[1])); }
     else if(k === 'blast'){ SND.sfx('blast', new THREE.Vector3(ev[1], 0.5, ev[2])); ctx.buzz(60); }
-    else if(k === 'witch'){ SND.cue('witchwarn'); SND.sfx('cackle'); ctx.banner('THE WITCH', house ? 'She is tearing the roof off - look up!' : 'Shoot her down before she bombs the walls'); }
-    else if(k === 'summon'){ ctx.callout(house ? 'She is raising skeletons!' : 'She is raising skeletons - ' + sideWords(ev[1], ev[2])); SND.sfx('cackle', new THREE.Vector3(ev[1], 6, ev[2])); }
+    else if(k === 'witch'){ SND.cue('witchwarn'); SND.sfx('cackle'); ctx.banner(gd() ? 'SWOOP!' : 'THE WITCH', gd() ? 'Bring the hawk down before he bombs the line' : house ? 'She is tearing the roof off - look up!' : 'Shoot her down before she bombs the walls'); }
+    else if(k === 'summon'){ ctx.callout(gd() ? 'Swoop is calling in receivers - ' + sideWords(ev[1], ev[2]) : house ? 'She is raising skeletons!' : 'She is raising skeletons - ' + sideWords(ev[1], ev[2])); SND.sfx('cackle', new THREE.Vector3(ev[1], 6, ev[2])); }
     else if(k === 'focus' && house){ const n = ev.slice(1).map(i => secName(i)).filter(Boolean); if(n.length) ctx.callout('Coming through ' + n.join(' and ') + '!'); }
-    else if(k === 'witchdown'){ ctx.banner('THE WITCH IS DOWN', ''); SND.cue('victory'); }
+    else if(k === 'witchdown'){ ctx.banner(gd() ? 'SWOOP IS DOWN!' : 'THE WITCH IS DOWN', ''); SND.cue('victory'); }
     if(ctx.onEvent) ctx.onEvent(ev);
   };
 
@@ -472,7 +485,8 @@ export function createZombiePhone(ctx){
   function setSections(sd){ SD = sd; fitMap(); lastSecs = null; }
 
   return {
-    yard, frame, onSnap, send, keydown, keyup, setActive, release, setSections,
+    yard, frame, onSnap, send, keydown, keyup, setActive, release, setSections, setLook,
+    get look(){ return look; }, nameOf: type => gd() ? GD_NAMES[type] : MONSTERS[type].name,
     get active(){ return active; },
     // for netcheck
     test: {

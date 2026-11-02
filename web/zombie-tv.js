@@ -20,6 +20,7 @@ export function createZombieTV(ctx){
   let S = null;
 
   const who = c => (ctx.players() || []).find(p => p.c === c);
+  const gd = () => yard.look === 'gameday';
   yard.onEvent = ev => {
     const k = ev[0], SD = yard.sd, sec = i => SD[i] ? SD[i].name.toUpperCase() : '';
     if(k === 'shot'){ if(Math.random() < 0.6) SND.sfx(['pistol', 'shotgun', 'sniper'][ev[2]], null, 0.18); }
@@ -29,11 +30,11 @@ export function createZombieTV(ctx){
     else if(k === 'broken'){ ctx.banner(sec(ev[1]) + ' WALL BROKEN', 'Fix it or hold them off!'); SND.sfx('crack', null, 0.7); }
     else if(k === 'climb'){ ctx.call('CLIMBING IN - ' + sec(ev[2]) + '!', '#ff3a4a'); SND.sfx('alarm', null, 0.5); }
     else if(k === 'fixed'){ const p = who(ev[2]); ctx.call((p ? p.n + ' fixed the ' : 'Fixed the ') + (SD[ev[1]] ? SD[ev[1]].name : '') + ' wall', p ? COLORS[p.c] : '#5cff8a'); }
-    else if(k === 'bomb'){ ctx.call('Pumpkin bomb - ' + (SD[ev[1]] ? SD[ev[1]].name : ''), '#ffb030'); SND.sfx('whistle', null, 0.4); }
+    else if(k === 'bomb'){ ctx.call((gd() ? 'Football bomb - ' : 'Pumpkin bomb - ') + (SD[ev[1]] ? SD[ev[1]].name : ''), '#ffb030'); SND.sfx('whistle', null, 0.4); }
     else if(k === 'blast') SND.sfx('blast', null, 0.7);
-    else if(k === 'witch'){ SND.cue('witchwarn'); SND.sfx('cackle', null, 0.7); ctx.banner('THE WITCH', 'Shoot her down before she bombs the walls'); }
-    else if(k === 'summon'){ ctx.call('The witch raises skeletons - ' + sideWords(ev[1], ev[2]), '#9cff40'); SND.sfx('cackle', null, 0.5); }
-    else if(k === 'witchdown'){ const p = who(ev[1]); ctx.banner('THE WITCH IS DOWN', p ? 'Final shot: ' + p.n : ''); SND.cue('victory'); }
+    else if(k === 'witch'){ SND.cue('witchwarn'); SND.sfx('cackle', null, 0.7); ctx.banner(gd() ? 'SWOOP!' : 'THE WITCH', gd() ? 'Bring the hawk down before he bombs the line' : 'Shoot her down before she bombs the walls'); }
+    else if(k === 'summon'){ ctx.call((gd() ? 'Swoop calls in receivers - ' : 'The witch raises skeletons - ') + sideWords(ev[1], ev[2]), gd() ? '#ff5a4a' : '#9cff40'); SND.sfx('cackle', null, 0.5); }
+    else if(k === 'witchdown'){ const p = who(ev[1]); ctx.banner(gd() ? 'SWOOP IS DOWN!' : 'THE WITCH IS DOWN', p ? 'Final shot: ' + p.n : ''); SND.cue('victory'); }
     if(ctx.onEvent) ctx.onEvent(ev);
   };
 
@@ -77,6 +78,7 @@ export function createZombieTV(ctx){
   return {
     yard, frame, drawHud,
     /* a bunker drawn round the room (markers), or null for the usual one */
+    setLook(l){ yard.setLook(l); },
     setFence(L){ yard.setSections(L && L.portals ? sectionsOf(L) : SECTIONS); },
     onSnap(s){ S = s; yard.feed(s); },
     setActive(on){ active = on; canvas.style.display = on ? '' : 'none'; },

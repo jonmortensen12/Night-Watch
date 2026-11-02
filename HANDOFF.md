@@ -368,6 +368,43 @@ zoom), `why` (what got in, where) and events `shot`, `hit`, `poof`, `weak`,
 `broken`, `fixed`, `climb`, `bomb`, `blast`, `witch`, `summon`,
 `witchdown`, plus the shared `wave`, `clear`, `count`, `over`.
 
+## The Bunker's Game Day look (BYU vs Utah, `web/gameday.js`)
+
+Asked for 2026-11-03, for a BYU-Utah party: a toggle that themes the
+Bunker - every monster something Utah football, the witch as Swoop (the
+red-tailed hawk), and the guns firing miniature BYU players or Cosmo. Only
+the look changes; every rule is the same.
+
+- **The toggle** is the room's (`{t: 'look', key: 'halloween'|'gameday'}`,
+  kept by the host as `nwatch_save.look`, shown in `room.look`): the phone
+  lobby's "Look" row and the TV lobby's (Bunker only). It can change any
+  time; every screen follows the next room message (`Yard.setLook`, which
+  drops the monster meshes so they are rebuilt in the new look).
+- **The monsters** (`buildGameDayMonster`, same rigs as `yard.js`'s:
+  legL/legR/armL/armR/head, facing +z): pumpkinhead -> Utah lineman (#7x,
+  wide), skeleton -> Utah receiver (carries a ball), brute -> Utah nose
+  tackle (#99, 2.6 m), ghost -> a giant red foam finger ("#1 UTES") that
+  drifts through the fence, bat -> flying footballs with red wings, witch ->
+  Swoop (red body, white chest with a red U and face, black brow, hooked
+  gold beak, broad wings that flap and glide, red tail, talons), pumpkin
+  bomb -> a red football bomb. Jerseys are canvas textures (number front
+  and back), helmets carry a U decal.
+- **The shots**: every tracer also launches a miniature (`launchMini`): a
+  BYU player flying Superman-style (pistol, shotgun - a spread of them), or
+  Cosmo in No. 00 royal blue (sniper). They fly at 26-40 m/s (the hit is
+  still decided at once, as always). A knocked-out monster bursts into blue,
+  white and yellow confetti instead of Halloween sweets.
+- **The yard**: a striped football field with yard lines every 5 yards,
+  COUGARS and UTES painted in the end zones, goal posts, four floodlight
+  towers, a floodlight; the graveyard (gravestones, trees, jack-o'-lanterns,
+  wisps, mist) hidden; the fence painted BYU blue.
+- **The words**: "SWOOP!", "Football bomb", "Swoop calls in receivers",
+  the guns relabelled PLAYER / O-LINE / COSMO, results naming the Utah
+  monster that got in.
+- `node tools/lookshots.mjs gameday` puts the monsters, the minis, a phone
+  and a TV mid-game (and a Swoop wave) in `shots/look-gameday-*.png`;
+  `tools/gallery.html` is the portrait page it uses.
+
 ## The page must never zoom
 
 Reported from Brave: a player got zoomed in during the bunker and could not

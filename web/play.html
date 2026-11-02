@@ -202,6 +202,11 @@ body.mode-zombie #top { justify-content: space-between; }
     <button data-mode="zombie">🎃 BUNKER</button>
   </div>
   <p class="sub" id="modeHelp" style="margin:6px 0 0"></p>
+  <label id="lookLbl">Look</label>
+  <div class="themes" id="lookOpts">
+    <button data-look="halloween">🎃 Halloween</button>
+    <button data-look="gameday">🏈 Game Day: BYU vs Utah</button>
+  </div>
   <label>Music</label>
   <div class="themes" id="themes"></div>
   <label>Printed markers <a href="markers/print.html" style="color:var(--acc);text-transform:none;letter-spacing:0;font-size:12px" target="_blank">print</a></label>
@@ -439,7 +444,7 @@ function switchMode(m){
 /* the events both games have */
 function sharedEvent(ev){
   const k = ev[0];
-  if(k === 'wave'){ SND.cue(mode === 'zombie' ? 'zwave' : 'wave') || SND.sfx('click'); banner('WAVE ' + ev[1], ev[2] ? (mode === 'zombie' ? 'The witch is coming' : 'Dreadnought inbound') : ''); }
+  if(k === 'wave'){ SND.cue(mode === 'zombie' ? 'zwave' : 'wave') || SND.sfx('click'); banner('WAVE ' + ev[1], ev[2] ? (mode === 'zombie' ? (zctl && zctl.look === 'gameday' ? 'Swoop is coming' : 'The witch is coming') : 'Dreadnought inbound') : ''); }
   else if(k === 'clear') SND.cue(mode === 'zombie' ? 'zclear' : 'clear');
   else if(k === 'over'){ releaseAll(); SND.cue(S && S.nr ? 'record' : mode === 'zombie' ? 'zover' : 'gameover'); buzz([200, 100, 300]); }
   else if(k === 'count') SND.cue('count');
@@ -646,7 +651,7 @@ function onHost(d){
   } else if(d.t === 's'){
     S = d; lastSnap = performance.now();
     switchMode(d.mode === 'zombie' ? 'zombie' : 'space');
-    if(d.ro){ room = d.ro; kit.setMode(mkMode()); drawRoom(); }
+    if(d.ro){ room = d.ro; kit.setMode(mkMode()); drawRoom(); if(zctl && room.look && zctl.look !== room.look) zctl.setLook(room.look); }
     applyFence();
     kit.setPhase(d.ph);
     if(mode === 'zombie') zctl.onSnap(d); else world.feed(d);
@@ -991,7 +996,8 @@ function zResults(){
   $('overTitle').textContent = 'They got in!';
   $('overSub').innerHTML = '';
   const sub = document.createElement('span');
-  sub.textContent = (why ? 'A ' + MONSTERS[why.type].name + ' got in through the ' + SECTIONS[why.sec].name + ' wall' : 'The bunker fell') + ' on wave ' + S.w + '. ';
+  const secs = zctl ? zctl.yard.sd : SECTIONS;
+  sub.textContent = (why ? 'A ' + zctl.nameOf(why.type) + ' got in through the ' + (secs[why.sec] ? secs[why.sec].name : '') + ' wall' : 'The bunker fell') + ' on wave ' + S.w + '. ';
   $('overSub').appendChild(sub);
   if(S.nr){ const r = document.createElement('span'); r.className = 'record'; r.textContent = 'NEW RECORD!'; $('overSub').appendChild(r); }
   const t = $('results');
@@ -1045,7 +1051,16 @@ requestAnimationFrame(frame);
 /* For netcheck: drive this phone without a phone. */
 let testTrack = 0;
 /* the lobby's marker row */
+$('lookOpts').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  SND.unlock(); SND.sfx('click');
+  tx({t: 'look', key: b.dataset.look});
+});
 function drawMarkers(rm){
+  // the Bunker's look lives beside the markers in the lobby
+  $('lookLbl').style.display = $('lookOpts').style.display = rm === 'zombie' ? '' : 'none';
+  [...$('lookOpts').children].forEach(b => b.classList.toggle('sel', b.dataset.look === (room.look || 'halloween')));
   const mm = mkMode(), has = room.mk ? room.mk.has : 0, bound = room.mk && room.mk.bound;
   [...$('mkOpts').children].forEach(b => {
     b.classList.toggle('sel', b.dataset.mk === mm);
