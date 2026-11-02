@@ -444,9 +444,10 @@ function switchMode(m){
 /* the events both games have */
 function sharedEvent(ev){
   const k = ev[0];
-  if(k === 'wave'){ SND.cue(mode === 'zombie' ? 'zwave' : 'wave') || SND.sfx('click'); banner('WAVE ' + ev[1], ev[2] ? (mode === 'zombie' ? (zctl && zctl.look === 'gameday' ? 'Swoop is coming' : 'The witch is coming') : 'Dreadnought inbound') : ''); }
-  else if(k === 'clear') SND.cue(mode === 'zombie' ? 'zclear' : 'clear');
-  else if(k === 'over'){ releaseAll(); SND.cue(S && S.nr ? 'record' : mode === 'zombie' ? 'zover' : 'gameover'); buzz([200, 100, 300]); }
+  const gd = mode === 'zombie' && zctl && zctl.look === 'gameday';
+  if(k === 'wave'){ SND.cue(gd ? 'gwave' : mode === 'zombie' ? 'zwave' : 'wave') || SND.sfx('click'); banner('WAVE ' + ev[1], ev[2] ? (mode === 'zombie' ? (zctl && zctl.look === 'gameday' ? 'Swoop is coming' : 'The witch is coming') : 'Dreadnought inbound') : ''); }
+  else if(k === 'clear'){ if(gd) SND.cue('fightsong') || SND.cue('gclear'); else SND.cue(mode === 'zombie' ? 'zclear' : 'clear'); }
+  else if(k === 'over'){ releaseAll(); SND.cue(S && S.nr ? 'record' : gd ? 'gover' : mode === 'zombie' ? 'zover' : 'gameover'); buzz([200, 100, 300]); }
   else if(k === 'count') SND.cue('count');
 }
 
@@ -930,9 +931,10 @@ function drawRoom(){
     ? 'Monsters attack the bunker from every side. Walk with the stick, turn with your body, switch guns at the top. Stand at a damaged wall and hold REPAIR. If one gets in, you lose.'
     : 'Enemy ships all around you - above, behind, under the floor. Hold a finger to fire; hold your aim on one to lock a missile.';
   const th = $('themes');
-  const list = SND.musicThemes(rm);
-  if(list.length && (th.childElementCount !== list.length + 1 || th.dataset.mode !== rm)){
-    th.dataset.mode = rm;
+  const tk = rm === 'zombie' && room.look === 'gameday' ? 'gameday' : rm;
+  const list = SND.musicThemes(tk);
+  if(list.length && (th.childElementCount !== list.length + 1 || th.dataset.mode !== tk)){
+    th.dataset.mode = tk;
     th.innerHTML = '';
     list.concat([{key: 'off', title: 'Off'}]).forEach(t => {
       const b = document.createElement('button');
@@ -1042,8 +1044,8 @@ function frame(){
   // the music: the lobby's, the chosen theme's, or the dreadnought's
   const theme = room && room.theme;
   const z = mode === 'zombie';
-  const want = !S ? null : phase === 'lobby' ? (theme && theme !== 'off' && room.themePicked ? theme : z ? 'zlobby' : 'lobby') : phase === 'over' ? null :
-    (S.boss ? (z ? 'witchboss' : 'boss') : theme === 'off' ? null : theme || (z ? 'danse' : 'nightwatch'));
+  const kind = z ? (room && room.look === 'gameday' ? 'gameday' : 'zombie') : 'space';
+  const want = !S ? null : SND.pick(kind, phase, theme, room && room.themePicked, S.boss);
   SND.music(want);
 }
 requestAnimationFrame(frame);

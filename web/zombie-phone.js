@@ -220,7 +220,7 @@ export function createZombiePhone(ctx){
     } else if(k === 'fixed'){ ctx.toast(secName(ev[1]) + ' fixed'); }
     else if(k === 'bomb'){ ctx.callout((gd() ? 'FOOTBALL BOMB - ' : 'PUMPKIN BOMB - ') + secName(ev[1]) + ' - shoot it!'); SND.sfx('whistle', secPos(ev[1])); }
     else if(k === 'blast'){ SND.sfx('blast', new THREE.Vector3(ev[1], 0.5, ev[2])); ctx.buzz(60); }
-    else if(k === 'witch'){ SND.cue('witchwarn'); SND.sfx('cackle'); ctx.banner(gd() ? 'SWOOP!' : 'THE WITCH', gd() ? 'Bring the hawk down before he bombs the line' : house ? 'She is tearing the roof off - look up!' : 'Shoot her down before she bombs the walls'); }
+    else if(k === 'witch'){ SND.cue(gd() ? 'swoopwarn' : 'witchwarn'); SND.sfx('cackle'); ctx.banner(gd() ? 'SWOOP!' : 'THE WITCH', gd() ? 'Bring the hawk down before he bombs the line' : house ? 'She is tearing the roof off - look up!' : 'Shoot her down before she bombs the walls'); }
     else if(k === 'summon'){ ctx.callout(gd() ? 'Swoop is calling in receivers - ' + sideWords(ev[1], ev[2]) : house ? 'She is raising skeletons!' : 'She is raising skeletons - ' + sideWords(ev[1], ev[2])); SND.sfx('cackle', new THREE.Vector3(ev[1], 6, ev[2])); }
     else if(k === 'focus' && house){ const n = ev.slice(1).map(i => secName(i)).filter(Boolean); if(n.length) ctx.callout('Coming through ' + n.join(' and ') + '!'); }
     else if(k === 'witchdown'){ ctx.banner(gd() ? 'SWOOP IS DOWN!' : 'THE WITCH IS DOWN', ''); SND.cue('victory'); }

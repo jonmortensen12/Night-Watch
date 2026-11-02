@@ -44,6 +44,24 @@
    "title": "Hollow Hill",
    "blurb": "A music box, a heartbeat and tolling bells",
    "mode": "zombie"
+  },
+  "pepband": {
+   "file": "pepband.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 68.87142857142857,
+   "bpm": 126,
+   "title": "Pep Band",
+   "blurb": "A march from the stands: trumpets, tuba, snares",
+   "mode": "gameday"
+  },
+  "drumline": {
+   "file": "drumline.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 43.93637188208616,
+   "bpm": 132,
+   "title": "Drumline",
+   "blurb": "Snares and bass drums, brass shouting back",
+   "mode": "gameday"
   }
  },
  "loops": {
@@ -70,6 +88,18 @@
    "loopStart": 0.3,
    "loopEnd": 36.3,
    "bpm": 180
+  },
+  "globby": {
+   "file": "globby.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 35.855555555555554,
+   "bpm": 108
+  },
+  "swoopboss": {
+   "file": "swoopboss.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 38.699999999999996,
+   "bpm": 150
   }
  },
  "cues": {
@@ -120,6 +150,22 @@
   "zover": {
    "file": "zover.mp3",
    "len": 9.06
+  },
+  "gwave": {
+   "file": "gwave.mp3",
+   "len": 4.14
+  },
+  "gclear": {
+   "file": "gclear.mp3",
+   "len": 4.2
+  },
+  "swoopwarn": {
+   "file": "swoopwarn.mp3",
+   "len": 4.6
+  },
+  "gover": {
+   "file": "gover.mp3",
+   "len": 6.31
   }
  },
  "credit": "Instruments: FluidR3 GM soundfont by Frank Wen (CC BY 3.0)"

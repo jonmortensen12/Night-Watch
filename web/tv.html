@@ -295,9 +295,10 @@ function switchMode(m){
 let zhud = null;
 function sharedEvent(ev){
   const k = ev[0], z = mode === 'zombie';
-  if(k === 'wave'){ SND.cue(z ? 'zwave' : 'wave'); banner('WAVE ' + ev[1], ev[2] ? (z ? (ztv && ztv.yard.look === 'gameday' ? 'Swoop is coming' : 'The witch is coming') : 'Dreadnought inbound') : ''); }
-  else if(k === 'clear') SND.cue(z ? 'zclear' : 'clear');
-  else if(k === 'over') SND.cue(S && S.nr ? 'record' : z ? 'zover' : 'gameover');
+  const gd = z && ztv && ztv.yard.look === 'gameday';
+  if(k === 'wave'){ SND.cue(gd ? 'gwave' : z ? 'zwave' : 'wave'); banner('WAVE ' + ev[1], ev[2] ? (z ? (ztv && ztv.yard.look === 'gameday' ? 'Swoop is coming' : 'The witch is coming') : 'Dreadnought inbound') : ''); }
+  else if(k === 'clear'){ if(gd) SND.cue('fightsong') || SND.cue('gclear'); else SND.cue(z ? 'zclear' : 'clear'); }
+  else if(k === 'over') SND.cue(S && S.nr ? 'record' : gd ? 'gover' : z ? 'zover' : 'gameover');
   else if(k === 'count') SND.cue('count');
 }
 
@@ -513,8 +514,8 @@ function frame(){
   if(now > bannerT) $('banner').classList.remove('on');
   const theme = room && room.theme;
   const z = mode === 'zombie';
-  const want = phase === 'lobby' ? (theme && theme !== 'off' && room && room.themePicked ? theme : z ? 'zlobby' : 'lobby') : phase === 'over' ? null :
-    S && S.boss ? (z ? 'witchboss' : 'boss') : theme === 'off' ? null : theme || (z ? 'danse' : 'nightwatch');
+  const kind = z ? (room && room.look === 'gameday' ? 'gameday' : 'zombie') : 'space';
+  const want = SND.pick(kind, phase, theme, room && room.themePicked, S && S.boss);
   SND.music(want);
   const cr = SND.musicCredit();
   if(cr && !$('credit').textContent) $('credit').textContent = cr;

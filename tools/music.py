@@ -265,6 +265,8 @@ def render(score, tail=3.0, loop=True):
         s = snare(vel) if kind == 'snare' else crash(vel)
         start = int(t * SR)
         end = min(N, start + len(s))
+        if end <= start:
+            continue
         dry[start:end] += s[:end - start]
         wet[start:end] += s[:end - start] * 0.35
     ir = reverb_ir()
@@ -746,6 +748,178 @@ def c_zover(sc):
     sc.line('bassoon', 0, 'E3:1 D3:1 C3:1 B2:1 A2:4', 0.6)
 
 
+# ================================================================ Game Day (the Bunker's BYU vs Utah look)
+# A pep band in the stands: trumpets on the tune, trombones on the off-beats,
+# a tuba walking, a snare cadence, the bass drum (taiko), glockenspiel up top.
+# All original; "Charge!" is the old stadium bugle call.
+def cadence(sc, bar, vel=0.5, fill=False):
+    """A snare cadence for one 4/4 bar: eighths, accents on 2 and 4, a fill to finish."""
+    for k in range(8):
+        b = bar * 4 + k * 0.5
+        sc.drum('snare', b, vel * (1.0 if k in (2, 6) else 0.6))
+    if fill:
+        snare_roll(sc, bar * 4 + 3, 1, vel * 0.6, vel * 1.1)
+    sc.note('taiko', bar * 4, 0.5, 'C3', vel + 0.2)
+    sc.note('taiko', bar * 4 + 2, 0.5, 'C3', vel + 0.1)
+
+
+def oompah(sc, bar, ch, vt=0.62, vb=0.42):
+    """The tuba on 1 and 3 (root, fifth), trombones and horns on 2 and 4."""
+    bass, pcs, root = chord(ch)
+    sc.note('tuba', bar * 4, 0.9, near(bass, 34, 45), vt)
+    sc.note('tuba', bar * 4 + 2, 0.9, near((bass + 7) % 12, 34, 45), vt * 0.9)
+    for b in (1, 3):
+        sc.hold('trombone', bar * 4 + b, 0.45, voice(pcs, 50, 60), vb)
+        sc.hold('horn', bar * 4 + b, 0.45, voice(pcs, 58, 66), vb * 0.8)
+
+
+def pepband():
+    """Pep Band: a march for the stands. B-flat, 4/4, 126 bpm."""
+    sc = Score(126, 36, seed=201)
+    A = ['Bb', 'Bb', 'F', 'F', 'Bb', 'Eb', 'F', 'Bb']
+    B = ['Eb', 'Eb', 'Bb', 'Bb', 'C7', 'C7', 'F', 'F7']
+    prog = ['Bb', 'Bb', 'F7', 'F7'] + A + A + B + A + A
+    for bar, ch in enumerate(prog):
+        sect = 'intro' if bar < 4 else 'A' if bar < 20 else 'B' if bar < 28 else "A'"
+        oompah(sc, bar, ch, 0.66 if sect != 'B' else 0.56, 0.44 if sect != "A'" else 0.52)
+        cadence(sc, bar, 0.5 if sect != 'B' else 0.4, fill=(bar % 8 == 7))
+        if sect == "A'" and bar % 4 == 0:
+            sc.drum('crash', bar * 4, 0.7)
+    sc.line('trumpet', 0, 'F4:1 Bb4:1 D5:1 F5:1 F5:2 D5:1 F5:1 A4:4 C5:4', 0.8)
+    mel = ['F5:1.5 D5:0.5 Bb4:1 D5:1', 'F5:2 Bb5:2', 'A5:1.5 G5:0.5 F5:1 Eb5:1', 'C5:4',
+           'D5:1.5 Eb5:0.5 F5:1 D5:1', 'Eb5:1 G5:1 Bb5:2', 'A5:1 F5:1 C5:1 Eb5:1', 'D5:3 r:1']
+    for i, ln in enumerate(mel):
+        sc.line('trumpet', (4 + i) * 4, ln, 0.82, legato=0.85)
+        sc.line('trumpet', (12 + i) * 4, ln, 0.84, legato=0.85)
+        sc.line('glock', (12 + i) * 4, ln, 0.5, shift=12)
+        sc.line('trumpet', (28 + i) * 4, ln, 0.88, legato=0.85)
+        sc.line('glock', (28 + i) * 4, ln, 0.55, shift=12)
+        sc.line('brass', (28 + i) * 4, ln, 0.4, shift=-12)
+    melB = ['G4:2 Bb4:1 Eb5:1', 'D5:2 C5:2', 'F4:1 Bb4:1 D5:1 F5:1', 'D5:4', 'E4:1 G4:1 Bb4:1 C5:1', 'E5:2 D5:1 C5:1', 'A4:1 C5:1 F5:1 A5:1', 'G5:2 F5:1 Eb5:1']
+    for i, ln in enumerate(melB):
+        sc.line('trombone', (20 + i) * 4, ln, 0.78, shift=-12)
+        sc.line('horn', (20 + i) * 4, ln, 0.5, shift=-12)
+        sc.line('flute', (20 + i) * 4, ln, 0.4, shift=12)
+    return sc
+
+
+def drumline():
+    """Drumline: the snares and basses own it, brass shouting back. F minor, 132 bpm."""
+    sc = Score(132, 24, seed=211)
+    prog = ['Fm', 'Fm', 'Db', 'C', 'Fm', 'Fm', 'Bbm', 'C'] * 3
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        # the snare line: sixteenth roll-offs between the hits
+        for k in range(8):
+            sc.drum('snare', bar * 4 + k * 0.5, 0.75 if k % 2 == 1 else 0.5)
+        if bar % 2 == 1:
+            snare_roll(sc, bar * 4 + 3, 1, 0.3, 0.9, step=0.125)
+        # the bass drums: a pattern across the bar
+        for b, p in ((0, 'C3'), (0.75, 'G3'), (1.5, 'C3'), (2, 'G3'), (3, 'C3'), (3.5, 'G3')):
+            sc.note('taiko', bar * 4 + b, 0.4, p, 0.7)
+        sc.note('tuba', bar * 4, 1.5, near(bass, 29, 40), 0.7)
+        sc.note('tuba', bar * 4 + 2.5, 1, near(bass, 29, 40), 0.6)
+        if bar >= 8:
+            # brass hits, call and answer
+            sc.hold('brass', bar * 4, 0.4, voice(pcs, 53, 65), 0.62)
+            sc.hold('brass', bar * 4 + 1.5, 0.4, voice(pcs, 53, 65), 0.55)
+        if bar % 8 == 0:
+            sc.drum('crash', bar * 4, 0.75)
+    call = ['C5:0.5 C5:0.5 Ab4:0.5 C5:1 F5:1.5', 'Eb5:0.5 Db5:0.5 C5:3', 'F4:0.5 Ab4:0.5 C5:0.5 F5:1 Eb5:0.5 Db5:1', 'C5:2 E5:2']
+    for rep_ in (8, 16):
+        for i, ln in enumerate(call * 2):
+            sc.line('trumpet', (rep_ + i) * 4, ln, 0.84, legato=0.8)
+            if rep_ == 16:
+                sc.line('trombone', (rep_ + i) * 4, ln, 0.6, shift=-12, legato=0.8)
+    return sc
+
+
+def globby():
+    """Before kick-off: the stadium organ noodling over a light drum groove. B-flat, 108 bpm."""
+    sc = Score(108, 16, seed=221)
+    prog = ['Bb', 'Gm', 'Eb', 'F'] * 4
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        sc.hold('organ', bar * 4, 4, voice(pcs, 55, 67), 0.34)
+        sc.note('bass', bar * 4, 2, near(bass, 33, 44), 0.42)
+        sc.note('bass', bar * 4 + 2, 2, near((bass + 7) % 12, 33, 44), 0.38)
+        sc.note('taiko', bar * 4, 0.5, 'C3', 0.42)
+        sc.drum('snare', bar * 4 + 1, 0.3); sc.drum('snare', bar * 4 + 3, 0.34)
+    riff = ['F5:0.5 F5:0.5 D5:0.5 F5:0.5 Bb5:2', 'G5:0.5 F5:0.5 D5:1 Bb4:2', 'Eb5:0.5 G5:0.5 Bb5:1 G5:1 Eb5:1', 'F5:1 A5:1 C6:2']
+    for i in range(16):
+        if i % 8 < 4:
+            sc.line('organ', i * 4, riff[i % 4], 0.5)
+        else:
+            sc.line('glock', i * 4, riff[i % 4], 0.4)
+    return sc
+
+
+def swoopboss():
+    """Swoop: the hawk overhead. Brass in a minor key, timpani, rolls. D minor, 150 bpm."""
+    sc = Score(150, 24, seed=231)
+    P = ['Dm', 'Dm', 'Bb', 'A', 'Dm', 'Gm', 'A', 'A']
+    prog = P * 3
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        ostinato(sc, 'spicc', bar, ch, [0, 1, 2, 1, 0, 1, 2, 1], 50, 70, 0.55)
+        sc.note('tuba', bar * 4, 2, near(bass, 26, 37), 0.65)
+        sc.note('timp', bar * 4, 1, near(bass, 38, 50), 0.6)
+        sc.note('timp', bar * 4 + 2.5, 1, near(bass, 38, 50), 0.45)
+        cadence(sc, bar, 0.45, fill=(bar % 4 == 3))
+        sc.hold('trombone', bar * 4 + 1, 0.5, voice(pcs, 50, 62), 0.5)
+        sc.hold('trombone', bar * 4 + 3, 0.5, voice(pcs, 50, 62), 0.5)
+        if bar % 8 == 0:
+            sc.drum('crash', bar * 4, 0.8)
+            sc.note('hit', bar * 4, 0.5, 'D4', 0.5)
+    mel = ['A5:1 D6:1 F6:2', 'E6:1 D6:1 A5:2', 'Bb5:1 D6:1 F6:1 E6:1', 'C#6:4', 'D6:1 A5:1 F5:2', 'G5:1 Bb5:1 D6:2', 'C#6:1 E6:1 A6:2', 'A6:4']
+    for i, ln in enumerate(mel):
+        sc.line('trumpet', (8 + i) * 4, ln, 0.82, legato=0.85)
+        sc.line('trumpet', (16 + i) * 4, ln, 0.86, legato=0.85)
+        sc.line('horn', (16 + i) * 4, ln, 0.55, shift=-12)
+    return sc
+
+
+def c_gwave(sc):
+    # "Charge!": the stadium bugle call, and the snare kicks it off
+    sc.line('trumpet', 0, 'G4:0.333 C5:0.333 E5:0.333 G5:0.75 E5:0.25 G5:2', 0.9)
+    sc.line('trombone', 0, 'G3:0.333 C4:0.333 E4:0.333 G4:0.75 E4:0.25 G4:2', 0.6)
+    snare_roll(sc, 0, 1.75, 0.3, 0.8)
+    sc.note('taiko', 1.75, 0.5, 'C3', 0.9)
+    sc.note('tuba', 1.75, 2, 'C2', 0.7)
+    sc.drum('crash', 1.75, 0.8)
+
+
+def c_gclear(sc):
+    # touchdown: a fanfare and the drums
+    sc.line('trumpet', 0, 'F4:0.25 Bb4:0.25 D5:0.25 F5:0.75 D5:0.25 F5:0.5 Bb5:2', 0.88)
+    sc.hold('trombone', 1.5, 2.5, ['Bb2', 'F3', 'D4'], 0.62)
+    sc.hold('horn', 1.5, 2.5, ['F4', 'Bb4', 'D5'], 0.5)
+    sc.note('tuba', 1.5, 2.5, 'Bb1', 0.7)
+    for i, p in enumerate(['Bb5', 'D6', 'F6', 'Bb6']):
+        sc.note('glock', 1.5 + i * 0.25, 0.6, p, 0.5)
+    snare_roll(sc, 0, 1.5, 0.3, 0.8)
+    sc.drum('crash', 1.5, 0.9)
+    sc.note('taiko', 1.5, 0.5, 'C3', 0.9)
+
+
+def c_swoopwarn(sc):
+    # the hawk: a high trumpet scream sliding down, the low brass, a hit
+    for i, p in enumerate(['D6', 'C#6', 'C6', 'B5', 'Bb5', 'A5']):
+        sc.note('trumpet', i * 0.12, 0.2, p, 0.7)
+    sc.hold('trombone', 0.75, 3, ['D3', 'Ab3', 'D4'], 0.65)
+    sc.note('tuba', 0.75, 3, 'D2', 0.75)
+    roll(sc, 'timp', 0.75, 2.5, 'D3', 0.3, 0.9, step=0.125)
+    sc.note('hit', 3.25, 0.5, 'D4', 0.75)
+    sc.drum('crash', 3.25, 0.9)
+
+
+def c_gover(sc):
+    # the sad trombone
+    sc.line('trombone', 0, 'D4:0.9 C#4:0.9 C4:0.9 B3:3', 0.75, legato=0.95)
+    sc.note('tuba', 2.7, 3, 'G1', 0.45)
+    sc.drum('snare', 2.7, 0.3)
+
+
 # ---------------------------------------------------------------- short cues
 def cue(bpm, bars, fn, seed=7):
     sc = Score(bpm, bars, seed=seed)
@@ -834,13 +1008,16 @@ THEMES = {
     'redshift': ('Red Shift', 'Taiko, low brass and trumpets - all out', redshift, 'space'),
     'danse': ('Danse of the Dead', 'A skeletons\' waltz on xylophone and harpsichord', danse, 'zombie'),
     'hollow': ('Hollow Hill', 'A music box, a heartbeat and tolling bells', hollow, 'zombie'),
+    'pepband': ('Pep Band', 'A march from the stands: trumpets, tuba, snares', pepband, 'gameday'),
+    'drumline': ('Drumline', 'Snares and bass drums, brass shouting back', drumline, 'gameday'),
 }
-LOOPS = {'lobby': lobby, 'boss': boss, 'zlobby': zlobby, 'witchboss': witchboss}
+LOOPS = {'lobby': lobby, 'boss': boss, 'zlobby': zlobby, 'witchboss': witchboss, 'globby': globby, 'swoopboss': swoopboss}
 CUES = {
     'count': (120, 1, c_count), 'wave': (120, 1, c_wave), 'clear': (110, 1, c_clear),
     'bosswarn': (90, 2, c_bosswarn), 'victory': (120, 2, c_victory), 'gameover': (76, 2, c_gameover),
     'record': (110, 2, c_record), 'pickup': (120, 1, c_pickup),
     'zwave': (80, 1, c_zwave), 'zclear': (100, 1, c_zclear), 'witchwarn': (90, 2, c_witchwarn), 'zover': (70, 2, c_zover),
+    'gwave': (120, 1, c_gwave), 'gclear': (120, 1, c_gclear), 'swoopwarn': (100, 1, c_swoopwarn), 'gover': (80, 2, c_gover),
 }
 EDGE = 0.3        # seconds of wrap-around either side of a loop
 
@@ -875,6 +1052,13 @@ def main():
         encode(mix, os.path.join(OUT, key + '.mp3'))
         man['cues'][key] = {'file': key + '.mp3', 'len': round(len(mix) / SR, 2)}
         print(f'{key}: {len(mix) / SR:.1f} s')
+    # a fight song of your own (not made here): drop it in web/music as
+    # fightsong.mp3 and it plays when a Game Day wave is cleared
+    fs = os.path.join(OUT, 'fightsong.mp3')
+    if os.path.exists(fs):
+        man['cues']['fightsong'] = {'file': 'fightsong.mp3'}
+    else:
+        man['cues'].pop('fightsong', None)
     man['credit'] = 'Instruments: FluidR3 GM soundfont by Frank Wen (CC BY 3.0)'
     json.dump(man, open(man_path, 'w'), indent=1)
 

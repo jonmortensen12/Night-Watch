@@ -414,6 +414,20 @@ the look changes; every rule is the same.
 - **The words**: "SWOOP!", "Football bomb", "Swoop calls in receivers",
   the guns relabelled PLAYER / O-LINE / COSMO, results naming the Utah
   monster that got in.
+- **The music** (`tools/music.py`, mode `gameday`): two pieces to pick in
+  the lobby, Pep Band (a B-flat march: trumpets, trombone and horn
+  off-beats, tuba, a snare cadence, glockenspiel) and Drumline (F minor,
+  snares and bass drums with brass shouting back); `globby` (the stadium
+  organ before kick-off); `swoopboss` (D minor brass and timpani while
+  Swoop is up); cues `gwave` ("Charge!", the stadium bugle call), `gclear`
+  (a touchdown fanfare), `swoopwarn`, `gover` (the sad trombone).
+  `SND.pick(kind, phase, theme, picked, boss)` chooses for both pages.
+  **A real fight song** is not made here (and not transcribed - it is
+  somebody's): put a recording at `web/music/fightsong.mp3`, run
+  `python3 tools/music.py gclear` (which lists it in music.json), and it
+  plays in place of the fanfare when a Game Day wave is cleared. Trim it
+  to the bit you want first (ffmpeg -ss/-t); a cue ducks the music for its
+  length.
 - `node tools/lookshots.mjs gameday` puts the monsters, the minis, a phone
   and a TV mid-game (and a Swoop wave) in `shots/look-gameday-*.png`;
   `tools/gallery.html` is the portrait page it uses.

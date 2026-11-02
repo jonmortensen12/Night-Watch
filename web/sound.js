@@ -323,6 +323,20 @@ export function musicThemes(mode){
   return m && m.themes ? Object.entries(m.themes).filter(([k, t]) => (t.mode || 'space') === (mode || 'space'))
     .map(([k, t]) => ({key: k, title: t.title, blurb: t.blurb})) : [];
 }
+/* Which game a theme belongs to ('space', 'zombie', 'gameday'), or null. */
+export function themeMode(key){ const m = MUSIC.man; return m && m.themes && m.themes[key] ? (m.themes[key].mode || 'space') : null; }
+/* What should be playing, for both pages: the lobby's loop or the chosen
+   piece; the boss's loop; nothing on the results. kind: 'space' | 'zombie' |
+   'gameday' (the Bunker's BYU vs Utah look). */
+export function pick(kind, phase, theme, themePicked, boss){
+  const own = theme && theme !== 'off' && themeMode(theme) === kind ? theme : null;
+  const LOBBY = {space: 'lobby', zombie: 'zlobby', gameday: 'globby'}, BOSS = {space: 'boss', zombie: 'witchboss', gameday: 'swoopboss'},
+    MAIN = {space: 'nightwatch', zombie: 'danse', gameday: 'pepband'};
+  if(phase === 'lobby') return own && themePicked ? own : LOBBY[kind];
+  if(phase === 'over') return null;
+  if(boss) return BOSS[kind];
+  return theme === 'off' ? null : own || MAIN[kind];
+}
 export function musicCredit(){ return MUSIC.man ? MUSIC.man.credit : ''; }
 export function setMusic(on){ MUSIC.on = on; }
 export function musicEnabled(){ return MUSIC.on; }
