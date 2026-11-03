@@ -298,7 +298,7 @@ export function buildMini(kind){
   const g = new THREE.Group();
   p.rotation.x = -Math.PI / 4; p.position.set(0, -0.5, 0.65);
   g.add(p);
-  g.scale.setScalar(kind === 'cosmo' ? 0.4 : 0.32);
+  g.scale.setScalar(kind === 'cosmo' ? 0.62 : 0.5);
   return g;
 }
 

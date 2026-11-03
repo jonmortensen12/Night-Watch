@@ -372,6 +372,10 @@ export class Locator {
     this.glide = (opts && opts.glide) || 0.1;
     this.yaws = [];
     this.P = null;
+    // walking (opts.smooth): the fixes feed a filter that knows speed as
+    // well as place; what is shown (this.out) glides to it every frame
+    this.smooth = !!(opts && opts.smooth);
+    this.V = [0, 0, 0]; this.out = null;
     this.fixT = -1e9; this.t = 0;
     this.pending = null;
     this.seen = [];
@@ -424,9 +428,10 @@ export class Locator {
       else this.yaw = wrap(this.yaw + wrap(est - this.yaw) * Math.min(1, dt * 1.5));
       // where the phone is
       const Y = yawMat(this.yaw);
-      let P = [0, 0, 0], w = 0;
-      for(const s of S){ const k = s.px * s.px; P = add(P, scale(sub(this.M[s.id].p, mv(Y, s.off)), k)); w += k; }
-      P = scale(P, 1 / w);
+      let P = [0, 0, 0], w = 0, dist = 0;
+      for(const s of S){ const k = s.px * s.px; P = add(P, scale(sub(this.M[s.id].p, mv(Y, s.off)), k)); w += k; dist += Math.hypot(...s.pose.t) * k; }
+      P = scale(P, 1 / w); dist /= w;
+      if(this.smooth) return this.filter(P, dist, S.length, dt);
       const fresh = this.t - this.fixT < 1.5;
       if(this.P && fresh && Math.hypot(P[0] - this.P[0], P[2] - this.P[2]) > 1.5){
         // a leap: believe it only if the next sightings agree
@@ -444,7 +449,52 @@ export class Locator {
       }
       this.fixT = this.t;
     }
-    return {P: this.P, yaw: this.yaw, fix: this.t - this.fixT, seen: this.seen};
+    if(this.smooth) this.coast(dt);
+    return {P: this.smooth ? this.out : this.P, yaw: this.yaw, fix: this.t - this.fixT, seen: this.seen};
+  }
+
+  /* Walking: an alpha-beta filter on the fixes. A fix moves the estimate
+     part of the way and nudges its speed; a fix within the markers' own
+     wobble (a few cm, more the further the markers are) barely moves it,
+     so standing still is still. A leap of over 1.5 m waits for three
+     agreeing fixes, as before. */
+  filter(z, dist, n, dt){
+    const gap = Math.max(0.03, Math.min(0.5, this.t - this.fixT));
+    const fresh = this.t - this.fixT < 1.5;
+    this.fixT = this.t;
+    if(!this.P || !fresh){ this.P = z.slice(); this.V = [0, 0, 0]; if(!this.out) this.out = z.slice(); this.pending = null; }
+    else {
+      const r = sub(z, this.P), rl = Math.hypot(r[0], r[2]);
+      if(rl > 1.5){
+        if(this.pending && Math.hypot(z[0] - this.pending[0], z[2] - this.pending[2]) < 0.4) this.pendN++;
+        else { this.pending = z; this.pendN = 1; }
+        if(this.pendN >= 3){ this.P = z.slice(); this.V = [0, 0, 0]; this.pending = null; }
+      } else {
+        this.pending = null;
+        const floor = (0.025 + 0.012 * dist) / Math.sqrt(n);
+        const q = Math.min(1, (rl / floor) ** 2);
+        const a = 0.3 * Math.max(0.06, q), b = 0.06 * q;
+        this.P = add(this.P, scale(r, a));
+        this.V = add(this.V, scale([r[0], r[1] * 0.3, r[2]], b / gap));
+        const v = Math.hypot(this.V[0], this.V[2]);
+        if(v > 2.2) this.V = scale(this.V, 2.2 / v);
+      }
+    }
+    this.coast(dt || 0);
+    return {P: this.out, yaw: this.yaw, fix: 0, seen: this.seen};
+  }
+  /* Every frame: carry on at the filter's speed for a little while, and
+     glide what is shown towards it. */
+  coast(dt){
+    if(!this.P) return;
+    if(dt > 0){
+      const since = this.t - this.fixT;
+      if(since < 0.6) this.P = add(this.P, scale(this.V, dt));
+      this.V = scale(this.V, Math.exp(-dt / 0.5));
+    }
+    if(!this.out) this.out = this.P.slice();
+    const k = 1 - Math.exp(-Math.max(dt, 0.001) / 0.12);
+    this.out = add(this.out, scale(sub(this.P, this.out), dt > 0 ? k : 0));
   }
 }
 

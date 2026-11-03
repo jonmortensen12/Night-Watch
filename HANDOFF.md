@@ -407,6 +407,9 @@ the look changes; every rule is the same.
 - **Friends** are BYU players (number by colour, helmet stripe in their
   colour) holding a t-shirt cannon (`buildByuAvatar`). A knocked-out monster bursts into blue,
   white and yellow confetti instead of Halloween sweets.
+- **On a phone the fence is waist-high and see-through** (all looks; the
+  TV keeps it tall and solid), and each section's health bar is painted on
+  the ground just inside it instead of floating at eye height.
 - **The yard**: a striped football field with yard lines every 5 yards,
   COUGARS and UTES painted in the end zones, goal posts, four floodlight
   towers, a floodlight; the graveyard (gravestones, trees, jack-o'-lanterns,
@@ -414,6 +417,9 @@ the look changes; every rule is the same.
 - **The words**: "SWOOP!", "Football bomb", "Swoop calls in receivers",
   the guns relabelled PLAYER / O-LINE / COSMO, results naming the Utah
   monster that got in.
+- **Who plays music**: the TV, or the phone running the game (the first
+  in); other phones play their sound effects but no music or cues (phones
+  cannot keep music in step), unless somebody turns ♪ back on.
 - **The music** (`tools/music.py`, mode `gameday`): two pieces to pick in
   the lobby, Pep Band (a B-flat march: trumpets, trombone and horn
   off-beats, tuba, a snare cadence, glockenspiel) and Drumline (F minor,
@@ -600,8 +606,17 @@ fence turns), planks, a floor in the ring's shape, the TV camera pulled
 back to fit (`Yard.setSections` swaps it). The phone's stick is kept inside
 the drawn fence (`inside`), sliding along it.
 
-**Finding yourself** is the Haunted House's `Locator`, glide 0.35 s, with a
-jump of over 1.5 m believed after three agreeing sightings. Positions from
+**Finding yourself** is the Haunted House's `Locator` with `smooth`:
+after the first real test ("my position was still kind of jumpy") the
+fixes feed an alpha-beta filter (place and speed; a fix inside the markers'
+own wobble - 2.5 cm plus 1.2 cm a metre of distance - barely moves it, so
+standing still is still), it coasts at its speed for up to 0.6 s between
+fixes, and what is shown glides to it every frame (0.12 s) instead of
+stepping at each fix. Markers are looked for 20 times a second from a
+640x480, 30 fps camera. In a simulated walk (3 cm noise, fixes at 15 Hz)
+the biggest frame-to-frame jump went from 7 cm to 2 cm and the error from
+24 to 14 cm. A jump of over 1.5 m is believed after three agreeing fixes.
+More markers, spread round the room, still help most. Positions from
 markers are held between sightings; `kit.pos()` gives up 20 s after the
 last one (back to the stick).
 

@@ -29,7 +29,7 @@ import {Detector} from './markers.js';
 import {Survey, Locator, Focal, fenceLayout, boundaryProblem, insidePoly, mv, mul, tr, yawMat} from './room.js';
 
 const DET_LONG = 640;           // the picture markers are looked for in, long side
-const WALK_EVERY = 0.12;        // seconds between looks while walking
+const WALK_EVERY = 0.05;        // seconds between looks while walking (the camera gives 30 a second)
 const FACE_EVERY = 0.05;        // ...and while squaring up between waves
 
 export function createMarkerKit(ctx){
@@ -38,7 +38,7 @@ export function createMarkerKit(ctx){
   //       send(L) (to the host), toast(msg), sim, simYaw, game: () => 'space'|'zombie'}
   const params = new URLSearchParams(location.search);
   const SIM = !!ctx.sim;
-  let mode = 'off', phase = 'lobby', layout = null, locator = new Locator(null, {glide: 0.35});
+  let mode = 'off', phase = 'lobby', layout = null, locator = new Locator(null, {glide: 0.35, smooth: true});
   let src = null, det = null, focal = null, gray = null, detScale = 1, camOn = false, starting = null, simcam = null;
   const grabC = document.createElement('canvas'), grabG = grabC.getContext('2d', {willReadFrequently: true});
   let since = 0, lastDets = [], loc = {P: null, yaw: null, fix: 1e9, seen: []}, lastFix = -1e9, clock = 0;
@@ -56,7 +56,7 @@ export function createMarkerKit(ctx){
         } else {
           if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('No camera here (it needs https).');
           const stream = await navigator.mediaDevices.getUserMedia({audio: false,
-            video: {facingMode: {ideal: 'environment'}, width: {ideal: 640}, height: {ideal: 480}, frameRate: {ideal: 15, max: 20}}});
+            video: {facingMode: {ideal: 'environment'}, width: {ideal: 640}, height: {ideal: 480}, frameRate: {ideal: 30, max: 30}}});
           const v = document.createElement('video');
           v.playsInline = true; v.muted = true; v.setAttribute('playsinline', '');
           v.srcObject = stream;
@@ -146,14 +146,14 @@ export function createMarkerKit(ctx){
   function pos(){
     if(mode !== 'walk' || !layout || !layout.boundary || !locator.P || !camOn) return null;
     // somebody who has not seen a marker for a long while is not where we think
-    return clock - lastFix < 20 ? locator.P : null;
+    return clock - lastFix < 20 ? (locator.out || locator.P) : null;
   }
 
   function setLayout(L){
     if(!L || !L.markers) return;
     const same = layout && JSON.stringify(layout.markers) === JSON.stringify(L.markers);
     layout = L;
-    if(!same) locator = new Locator(L, {glide: 0.35});      // a new setup is a new frame
+    if(!same) locator = new Locator(L, {glide: 0.35, smooth: true});      // a new setup is a new frame
     else locator.setLayout(L);
     try { localStorage.setItem('nwatch_markers_layout', JSON.stringify(L)); } catch(e){}
   }
@@ -250,7 +250,7 @@ export function createMarkerKit(ctx){
     if(L.f){ focal.set(L.f, true); delete L.f; keepFocal(); }
     // this phone's sensors, turned to FRONT, are the room's frame
     layout = L;
-    locator = new Locator(L, {yaw: setup.front, glide: 0.35});
+    locator = new Locator(L, {yaw: setup.front, glide: 0.35, smooth: true});
     if(!setup.walk){ ctx.send(L); try { localStorage.setItem('nwatch_markers_layout', JSON.stringify(L)); } catch(e){} ctx.toast(Object.keys(L.markers).length + ' markers - all set'); closeSetup(); return; }
     stepCorners();
   }

@@ -554,7 +554,9 @@ export class Yard {
     const sd = this.sd;
     const g = this.fence = new THREE.Group();
     this.scene.add(g);
-    const wood = this.wood || new THREE.MeshStandardMaterial({map: woodTex(true), roughness: 0.8, color: 0xffe0c8});
+    const wood = this.wood || new THREE.MeshStandardMaterial({map: woodTex(true), roughness: 0.8, color: 0xffe0c8,
+      // see-through on a phone: what is behind the fence is what matters
+      transparent: !this.tv, opacity: this.tv ? 1 : 0.55, depthWrite: this.tv});
     const post = this.postMat || new THREE.MeshStandardMaterial({map: woodTex(false), roughness: 0.85, color: 0xffd8c0});
     const iron = this.ironMat || new THREE.MeshStandardMaterial({color: 0x30302e, metalness: 0.7, roughness: 0.4});
     this.wood = wood; this.postMat = post; this.ironMat = iron;
@@ -579,9 +581,11 @@ export class Yard {
       const turn = Math.abs(Math.atan2(d0[0] * d1[1] - d0[1] * d1[0], d0[0] * d1[0] + d0[1] * d1[1]));
       const corner = turn > 0.5;
       const [x, z] = S.a;
-      part(g, new THREE.BoxGeometry(0.22, corner ? 1.75 : 1.45, 0.22), post, x, corner ? 0.875 : 0.725, z, 0, (i * 0.37) % 0.2);
+      // waist-high on a phone, so the fence never hides what is coming
+      const ph = this.tv ? (corner ? 1.75 : 1.45) : (corner ? 1.05 : 0.85);
+      part(g, new THREE.BoxGeometry(0.2, ph, 0.2), post, x, ph / 2, z, 0, (i * 0.37) % 0.2);
       if(corner){
-        const l = new THREE.Group(); l.position.set(x, 1.95, z); g.add(l);
+        const l = new THREE.Group(); l.position.set(x, ph + 0.2, z); g.add(l);
         part(l, new THREE.BoxGeometry(0.2, 0.04, 0.2), iron, 0, -0.14, 0);
         part(l, new THREE.BoxGeometry(0.2, 0.04, 0.2), iron, 0, 0.14, 0);
         part(l, new THREE.BoxGeometry(0.13, 0.22, 0.13), new THREE.MeshBasicMaterial({color: hot(0xffb050, 2.4)}), 0, 0, 0);
@@ -602,16 +606,30 @@ export class Yard {
       sg.position.set(S.mid[0], 0, S.mid[1]);
       sg.rotation.y = Math.atan2(-dz, dx);
       g.add(sg);
-      const planks = [0.28, 0.58, 0.88, 1.18].map((y, k) => {
-        const p = part(sg, new THREE.BoxGeometry(Math.max(0.2, len - 0.26), 0.22, 0.07), wood, (Math.random() - 0.5) * 0.06, y + (Math.random() - 0.5) * 0.04, 0, 0, 0, (Math.random() - 0.5) * 0.06);
+      const ys = this.tv ? [0.28, 0.58, 0.88, 1.18] : [0.14, 0.33, 0.52, 0.71], ph = this.tv ? 0.22 : 0.14;
+      const planks = ys.map((y, k) => {
+        const p = part(sg, new THREE.BoxGeometry(Math.max(0.2, len - 0.26), ph, 0.06), wood, (Math.random() - 0.5) * 0.06, y + (Math.random() - 0.5) * 0.04, 0, 0, 0, (Math.random() - 0.5) * 0.06);
         p.userData.home = p.position.clone();
         return p;
       });
       // a red glow on the ground where a section is down
       const warn = part(sg, new THREE.PlaneGeometry(len, 1.2), new THREE.MeshBasicMaterial({map: this.T.glow, color: hot(0xff2020, 1.5), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0}), 0, 0.03, 0, -Math.PI / 2);
       const bar = this.makeBar();
-      bar.sprite.position.set(S.mid[0] + S.n[0] * 0.1, this.tv ? 2.6 : 1.72, S.mid[1] + S.n[1] * 0.1);
-      g.add(bar.sprite);
+      if(this.tv){
+        bar.sprite.position.set(S.mid[0] + S.n[0] * 0.1, 2.6, S.mid[1] + S.n[1] * 0.1);
+        g.add(bar.sprite);
+      } else {
+        // on a phone the bar is painted on the ground just inside the fence:
+        // look down to read it, look up and it is out of the way
+        const flat = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(1.4, len * 0.8), Math.min(1.4, len * 0.8) * 48 / 256),
+          new THREE.MeshBasicMaterial({map: bar.t, transparent: true, depthWrite: false, fog: false}));
+        flat.rotation.x = -Math.PI / 2;
+        flat.rotation.z = Math.atan2(S.b[0] - S.a[0], S.b[1] - S.a[1]) - Math.PI / 2;
+        flat.position.set(S.mid[0] - S.n[0] * 0.45, 0.03, S.mid[1] - S.n[1] * 0.45);
+        flat.renderOrder = 2;
+        g.add(flat);
+        bar.sprite = flat;
+      }
       return {g: sg, planks, warn, bar, shown: 4, hp: 100, shake: 0};
     });
     this.debris = this.debris || [];
@@ -852,11 +870,13 @@ export class Yard {
       m = {kind, mesh: buildMini(kind), on: false};
       this.scene.add(m.mesh); this.minis.push(m);
     }
-    const d = to.distanceTo(from);
+    // they set off a little way out, so a big one does not fill the screen
+    const start = from.clone().lerp(to, Math.min(0.4, 1.2 / Math.max(0.01, to.distanceTo(from))));
+    const d = to.distanceTo(start);
     m.on = true; m.t = 0; m.dur = Math.max(0.15, d / (w === 2 ? 40 : 26));
-    m.from = from.clone(); m.to = to.clone(); m.spin = (Math.random() - 0.5) * 6;
+    m.from = start; m.to = to.clone(); m.spin = (Math.random() - 0.5) * 6;
     m.mesh.visible = true;
-    m.mesh.position.copy(from);
+    m.mesh.position.copy(start);
     m.mesh.lookAt(to); m.mesh.rotateY(Math.PI);      // the minis fly along -z of their own
   }
   updateMinis(dt){

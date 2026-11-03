@@ -627,6 +627,7 @@ $('lockGo').addEventListener('click', () => {
 });
 $('lockBtn').addEventListener('click', () => lockFront());
 
+let musicDecided = false;
 function musicBtn(){ $('musicBtn').style.opacity = SND.musicEnabled() ? 1 : 0.45; }
 $('musicBtn').addEventListener('click', () => { SND.unlock(); SND.setMusic(!SND.musicEnabled()); musicBtn(); });
 
@@ -638,8 +639,10 @@ function onHost(d){
     if(d.min > PROTO){ location.reload(); return; }
     roomTv = !!d.tv;
     if(pickTapped){ pickTapped = false; tx({t: 'mode', key: pickMode}); }
-    // a phone in a room with a TV leaves the music to the TV
-    if(!host && roomTv) SND.setMusic(false);
+    // one source of music: the TV, or the phone running the game (the first
+    // in). Other phones keep their sound effects but play no music - phones
+    // cannot keep music in step with each other. ♪ turns it back on here.
+    if(!host && !musicDecided){ musicDecided = true; SND.setMusic(false); }
     musicBtn();
     if($('lockScr').classList.contains('on')) $('lockTitle').textContent = roomTv ? 'Point at the TV' : 'Point at FRONT';
   } else if(d.t === 'you'){
