@@ -616,7 +616,37 @@ stepping at each fix. Markers are looked for 20 times a second from a
 640x480, 30 fps camera. In a simulated walk (3 cm noise, fixes at 15 Hz)
 the biggest frame-to-frame jump went from 7 cm to 2 cm and the error from
 24 to 14 cm. A jump of over 1.5 m is believed after three agreeing fixes.
-More markers, spread round the room, still help most. Positions from
+More markers, spread round the room, still help most.
+
+Second real test ("the position moves when I'm not moving and snaps back
+and forth between two solutions"), with 9 markers up. Until then the gyro
+only turned the view, the camera alone placed you, and the accelerometer
+was not used. Now:
+- **The heading is held, once sure.** The first heading needs readings
+  that agree (six walking, three for a glance between waves). It becomes
+  *sure* when two different markers, or two in view at once, agree (one
+  marker seen from one place can be read two ways, and the wrong way can
+  look consistent). Until sure it follows the evidence briskly; once sure,
+  a marker whose two readings differ by over 5° is ignored, so are readings
+  over 11° from the heading held, and it leans towards new evidence slowly
+  (0.4/s) with the gyro carrying it between times. `solvePose` now returns
+  the other answer (`R2`) for this. A wrong heading by a few degrees was
+  moving you tens of cm about the marker in view.
+- **Each marker's own error is learnt** (`bias`), while standing still with
+  the place held: what each marker says minus the held place, smoothed. It
+  is taken off what that marker says next time, so looking from one
+  marker to another no longer moves you.
+- **The step gate.** What is shown holds still until you have moved: the
+  accelerometer says walking (`devicemotion` acceleration, averaged; on
+  above 0.9 m/s^2, off below 0.45 - turning or tilting on the spot barely
+  registers), or the camera has had you over 40 cm away for 0.4 s. Then it
+  follows, no faster than 1.8 m/s, and settles again once you stop and the
+  place stays within 25 cm (0.5 s with the accelerometer saying still,
+  1 s without). In a simulation with markers disagreeing by 15 cm,
+  standing moves under 2 cm a second (it was 24 cm).
+- `?debug=1` on the phone shows: markers in view, HOLD or MOVING, the
+  accelerometer's walking reading, the heading, the position, and each
+  marker's learnt error in cm. Positions from
 markers are held between sightings; `kit.pos()` gives up 20 s after the
 last one (back to the stick).
 

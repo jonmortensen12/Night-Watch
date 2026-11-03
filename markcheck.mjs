@@ -161,9 +161,10 @@ ok(await until(A, n => NW_TEST.z().state && NW_TEST.kit().layout && document.get
 
 // walking about for real
 async function where(p, pos, yaw, pitch){
-  // a jump of over 1.5 m is believed after three agreeing sightings: give a
-  // software-drawn page (a few frames a second) time for them
-  await stand(p, pos, yaw, pitch, 4000);
+  // a jump of over 1.5 m waits for three agreeing fixes, the step gate for
+  // 40 cm held 0.4 s, and the catch-up glides at walking pace: a page drawn
+  // in software at a few frames a second needs a while for all that
+  await stand(p, pos, yaw, pitch, 9000);
   const s = await p.evaluate(() => NW_TEST.z().state());
   const e = Math.hypot(s.x - (pos[0] - MID[0]), s.z - (pos[2] - MID[2]));
   if(e > 0.3) console.log('       (where:', JSON.stringify(await p.evaluate(() => { const l = NW_TEST.kit().test.locator(); return {P: l.P, pending: l.pending, pendN: l.pendN, seen: NW_TEST.kit().seen(), cam: NW_TEST.kit().camOn}; })), 'truth', pos[0] - MID[0], pos[2] - MID[2], ')');
@@ -252,8 +253,7 @@ await wait(800);
 const Q = await phone(code2, 'Quin', 'space', -1.2);
 // Quin never locks FRONT: a look at a marker in the lobby squares the phone up
 await stand(Q, [0.4, 1.3, -0.8], ...look([0.4, 1.3, -0.8], MARKS[0]), 3500);
-const yawQ = await Q.evaluate(() => NW_TEST.kit().yaw());
-ok(yawQ != null, 'a second phone, never locked, squares itself up from a marker in the lobby');
+ok(await until(Q, () => NW_TEST.kit().yaw() != null, null, 12000), 'a second phone, never locked, squares itself up from a marker in the lobby');
 // both look the same way in the room: their views should agree
 async function fwdOf(p, yaw){
   await stand(p, [0, 1.4, 0], yaw, 0, 1500);

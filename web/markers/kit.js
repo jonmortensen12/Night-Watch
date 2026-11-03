@@ -44,6 +44,23 @@ export function createMarkerKit(ctx){
   let since = 0, lastDets = [], loc = {P: null, yaw: null, fix: 1e9, seen: []}, lastFix = -1e9, clock = 0;
   let setup = null;           // {step: 'front'|'survey'|'corners'|'map', survey, front, corners: []}
   let camError = '';
+  /* Walking, from the accelerometer: the body bobs one or two m/s^2 with
+     every step; turning or tilting the phone on the spot barely moves it.
+     null until the phone has said anything (a laptop, the test camera). */
+  let accAvg = 0, accSeen = false;
+  addEventListener('devicemotion', e => {
+    const a = e.acceleration;
+    if(!a || a.x == null) return;
+    accSeen = true;
+    accAvg = accAvg * 0.92 + Math.hypot(a.x, a.y, a.z) * 0.08;
+  });
+  let walkingNow = false;
+  function walking(){
+    if(!accSeen) return null;
+    // a little hysteresis: start at 0.9, stop below 0.45
+    walkingNow = walkingNow ? accAvg > 0.45 : accAvg > 0.9;
+    return walkingNow;
+  }
 
   /* ---------- the camera ---------- */
   async function camStart(){
@@ -134,6 +151,8 @@ export function createMarkerKit(ctx){
     if(setup && setup.step === 'survey'){
       if(dets){ setup.survey.add(dets, mul(yawMat(setup.front), Rs), cam); drawFound(); }
     } else if(layout && cam && (dets || camOn)){
+      locator.walking = walking();
+      locator.agree = mode === 'walk' ? 6 : 3;        // a glance between waves should be enough to square up
       loc = locator.update(dets, Rs, cam, dt);
       if(dets && dets.length && loc.seen.length) lastFix = clock;
       if(locator.fSuggest && !focal.sure){ focal.set(focal.f * 0.5 + locator.fSuggest * 0.5); locator.fSuggest = null; }
@@ -440,6 +459,12 @@ export function createMarkerKit(ctx){
     get mode(){ return mode; }, get layout(){ return layout; }, get busy(){ return !!setup; },
     get camOn(){ return camOn; }, get error(){ return camError; },
     seen: () => loc.seen,
+    /* for ?debug=1: what the phone thinks, in one line */
+    status(){
+      const l = locator, f = v => v == null ? '-' : v.toFixed(2);
+      const b = Object.entries(l.bias || {}).map(([id, v]) => (+id + 1) + ':' + Math.round(Math.hypot(v[0], v[1]) * 100)).join(' ');
+      return `see ${loc.seen.map(i => i + 1).join(',') || '-'} | ${l.moving ? 'MOVING' : 'HOLD'} | walk ${l.walking == null ? '?' : l.walking ? 'yes' : 'no'} (${accAvg.toFixed(2)} m/s2) | yaw ${l.yaw == null ? 'not yet' : (l.yaw * 57.3).toFixed(1) + '°' + (l.sure ? ' sure' : ' unsure')} | pos ${l.out ? l.out.map(f).join(' ') : '-'} | marker error cm ${b || '-'}`;
+    },
     // for the checks
     test: {
       sim: () => simcam, setup: () => setup, locator: () => locator, focal: () => focal && {f: focal.f / detScale, sure: focal.sure},

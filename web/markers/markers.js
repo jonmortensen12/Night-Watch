@@ -517,7 +517,8 @@ export function solvePose(c, f, cx, cy, size){
   // into three.js's frames: flip y and z on both sides
   const D = [1, 0, 0, 0, -1, 0, 0, 0, -1];
   return {R: mul(mul(D, best.R), D), t: [best.t[0], -best.t[1], -best.t[2]],
-    err: Math.sqrt(best.e / 4), amb: (best.e + 0.05) / (other.e + 0.05)};
+    err: Math.sqrt(best.e / 4), amb: (best.e + 0.05) / (other.e + 0.05),
+    R2: mul(mul(D, other.R), D)};       // the other answer, for deciding whether the ambiguity matters
 }
 
 /* The camera's focal length, in pixels, from one square seen at a slant -

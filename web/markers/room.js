@@ -368,6 +368,7 @@ export class Locator {
     // ...and keeps believing it, unless markers seen in pairs say otherwise
     // (one marker's turn alone is a noisy witness)
     this.prior = this.yaw;
+    this.sure = this.yaw != null;                 // see update: the heading is locked once it is sure
     // how gently a new fix is glided to, seconds (gentle: the whole world moves)
     this.glide = (opts && opts.glide) || 0.1;
     this.yaws = [];
@@ -376,6 +377,13 @@ export class Locator {
     // well as place; what is shown (this.out) glides to it every frame
     this.smooth = !!(opts && opts.smooth);
     this.V = [0, 0, 0]; this.out = null;
+    // each marker's own small error, learnt while standing still, so moving
+    // the camera from one marker to another does not move you
+    this.bias = {};
+    // what is shown holds still until you have really moved: walking (the
+    // accelerometer, set by the caller as .walking: true/false/null) or the
+    // camera agreeing you are 40 cm away
+    this.hold = null; this.moving = false; this.farT = 0; this.settleT = 0; this.walking = null;
     this.fixT = -1e9; this.t = 0;
     this.pending = null;
     this.seen = [];
@@ -409,10 +417,16 @@ export class Locator {
     if(S.length){
       // how far round the sensors' world is from the room's
       for(const s of S){
-        const Rroom = mul(this.M[s.id].R, tr(s.pose.R));        // the camera in the room, by this marker
-        const A = mul(Rroom, tr(Rs));
-        const y = Math.atan2(A[2] - A[6], A[0] + A[8]);
-        this.yaws.push({y, w: Math.max(0.02, 1 - Math.min(1, s.pose.amb * 1.3)) * Math.min(1, s.px / 40), t: this.t});
+        const yawOf = R => { const A = mul(mul(this.M[s.id].R, tr(R)), tr(Rs)); return Math.atan2(A[2] - A[6], A[0] + A[8]); };
+        const y = yawOf(s.pose.R);                          // the camera in the room, by this marker
+        // a marker whose turn could be read two ways that differ (by over
+        // 5 degrees) says nothing: that was the position snapping between
+        // two answers. Square-on, the two ways agree and it is fine.
+        // (Before any heading is held they count, and the readings must
+        // agree before one is believed - that sorts out the flips.)
+        if(this.smooth && this.sure && s.pose.amb > 0.35 && s.pose.R2 && Math.abs(wrap(yawOf(s.pose.R2) - y)) > 0.09) continue;
+        if(this.smooth && this.sure && Math.abs(wrap(y - this.yaw)) > 0.2) continue;
+        this.yaws.push({y, w: Math.max(0.02, 1 - Math.min(1, s.pose.amb * 1.3)) * Math.min(1, s.px / 40), t: this.t, id: s.id});
       }
       // two in view at once: the line between them says it best
       for(let i = 0; i < S.length; i++) for(let j = i + 1; j < S.length; j++){
@@ -420,16 +434,36 @@ export class Locator {
         const room = sub(this.M[b.id].p, this.M[a.id].p), seen = sub(b.off, a.off);
         if(Math.hypot(room[0], room[2]) < 0.6) continue;
         const y = Math.atan2(seen[2], seen[0]) - Math.atan2(room[2], room[0]);
-        this.yaws.push({y: wrap(y), w: 2.5, t: this.t});
+        this.yaws.push({y: wrap(y), w: 2.5, t: this.t, pair: true});
       }
       this.yaws = this.yaws.filter(e => this.t - e.t < 20).slice(-80);
-      const est = circularMedian(this.prior != null ? this.yaws.concat([{y: this.prior, w: 30, t: this.t}]) : this.yaws);
-      if(this.yaw == null) this.yaw = est;
-      else this.yaw = wrap(this.yaw + wrap(est - this.yaw) * Math.min(1, dt * 1.5));
+      const est = this.yaws.length || this.prior != null ? circularMedian(this.prior != null ? this.yaws.concat([{y: this.prior, w: 30, t: this.t}]) : this.yaws) : null;
+      if(est == null){ if(this.smooth) this.coast(dt); return {P: this.smooth ? this.out : this.P, yaw: this.yaw, fix: this.t - this.fixT, seen: this.seen}; }
+      if(this.yaw == null){
+        // walking: wait for six readings that agree before trusting one
+        // (.agree: three for a glance between waves)
+        if(!this.smooth || this.yaws.filter(e => Math.abs(wrap(e.y - est)) < 0.12).length >= (this.agree || 6)) this.yaw = est;
+        else { if(this.smooth) this.coast(dt); return {P: this.out, yaw: null, fix: this.t - this.fixT, seen: this.seen}; }
+      }
+      // then it is held, and only leans towards new evidence slowly (the
+      // gyro keeps the turn between times) - once it is sure: one marker
+      // seen from one place can be read two ways, so it is sure when two
+      // different markers (or two in view at once) agree. Until then it
+      // follows the evidence briskly.
+      else this.yaw = wrap(this.yaw + wrap(est - this.yaw) * Math.min(1, dt * (this.smooth && this.sure ? 0.4 : 1.5)));
+      if(this.smooth && !this.sure){
+        const agree = this.yaws.filter(e => Math.abs(wrap(e.y - this.yaw)) < 0.1);
+        if(agree.some(e => e.pair) || new Set(agree.map(e => e.id)).size >= 2) this.sure = true;
+      }
       // where the phone is
       const Y = yawMat(this.yaw);
       let P = [0, 0, 0], w = 0, dist = 0;
-      for(const s of S){ const k = s.px * s.px; P = add(P, scale(sub(this.M[s.id].p, mv(Y, s.off)), k)); w += k; dist += Math.hypot(...s.pose.t) * k; }
+      const implied = S.map(s => sub(this.M[s.id].p, mv(Y, s.off)));
+      if(this.smooth) this.learnBias(S, implied);
+      S.forEach((s, i) => {
+        const k = s.px * s.px, b = this.smooth && this.bias[s.id] || [0, 0];
+        P = add(P, scale([implied[i][0] - b[0], implied[i][1], implied[i][2] - b[1]], k)); w += k; dist += Math.hypot(...s.pose.t) * k;
+      });
       P = scale(P, 1 / w); dist /= w;
       if(this.smooth) return this.filter(P, dist, S.length, dt);
       const fresh = this.t - this.fixT < 1.5;
@@ -483,8 +517,21 @@ export class Locator {
     this.coast(dt || 0);
     return {P: this.out, yaw: this.yaw, fix: 0, seen: this.seen};
   }
-  /* Every frame: carry on at the filter's speed for a little while, and
-     glide what is shown towards it. */
+  learnBias(S, implied){
+    // only standing still, with the place held, and only when it is not
+    // the one marker in view saying where you are
+    if(!this.hold || this.moving || this.walking || S.length < 1) return;
+    if(S.length === 1 && Object.keys(this.bias).length === 0) return;
+    S.forEach((s, i) => {
+      const b = this.bias[s.id] || (this.bias[s.id] = [0, 0]);
+      const ex = implied[i][0] - this.hold[0], ez = implied[i][2] - this.hold[2];
+      if(Math.hypot(ex, ez) > 0.8) return;               // that is not a small error
+      b[0] += (ex - b[0]) * 0.04; b[1] += (ez - b[1]) * 0.04;
+    });
+  }
+  /* Every frame: carry on at the filter's speed for a little while; then
+     the step gate - what is shown holds still unless you are walking or
+     the camera says you are well away, and settles again when you stop. */
   coast(dt){
     if(!this.P) return;
     if(dt > 0){
@@ -492,9 +539,25 @@ export class Locator {
       if(since < 0.6) this.P = add(this.P, scale(this.V, dt));
       this.V = scale(this.V, Math.exp(-dt / 0.5));
     }
-    if(!this.out) this.out = this.P.slice();
-    const k = 1 - Math.exp(-Math.max(dt, 0.001) / 0.12);
-    this.out = add(this.out, scale(sub(this.P, this.out), dt > 0 ? k : 0));
+    if(!this.hold){ this.hold = this.P.slice(); this.out = this.P.slice(); return; }
+    const far = Math.hypot(this.P[0] - this.hold[0], this.P[2] - this.hold[2]);
+    this.farT = far > 0.4 ? this.farT + dt : 0;
+    if(this.walking === true || this.farT > 0.4) { this.moving = true; this.settleT = 0; }
+    if(this.moving){
+      // follow the filter; stop when the walking has stopped and the place
+      // has stayed within 25 cm for a moment (markers that disagree a
+      // little make the filter look busy - that is not walking)
+      if(!this.anchor || this.walking === true || Math.hypot(this.P[0] - this.anchor[0], this.P[2] - this.anchor[2]) > 0.25){ this.anchor = this.P.slice(); this.settleT = 0; }
+      else this.settleT += dt;
+      if(this.settleT > (this.walking === false ? 0.5 : 1.0)){ this.moving = false; this.hold = this.P.slice(); this.anchor = null; }
+    } else this.hold[1] += (this.P[1] - this.hold[1]) * Math.min(1, dt * 0.5);
+    const target = this.moving ? this.P : this.hold;
+    const k = 1 - Math.exp(-Math.max(dt, 0.001) / 0.15);
+    let step = scale(sub(target, this.out), dt > 0 ? k : 0);
+    // never faster than a brisk walk: catching up is a glide, not a jump
+    const sl = Math.hypot(step[0], step[2]), cap = 1.8 * dt;
+    if(sl > cap) step = scale(step, cap / sl);
+    this.out = add(this.out, step);
   }
 }
 
