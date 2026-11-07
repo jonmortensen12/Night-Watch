@@ -67,7 +67,7 @@ function fresh(){
 const q = new URLSearchParams(location.search);
 $('party').value = clean(q.get('party')) || clean(recall('nwatch_party')) || fresh();
 
-function base(){ return location.href.split('#')[0].split('?')[0].replace(/party\.html$/, ''); }
+function base(){ return location.href.split('#')[0].split('?')[0].replace(/[^/]*$/, ''); }
 function link(){ return base() + 'gameday/?party=' + clean($('party').value); }
 
 function qrImg(text){
