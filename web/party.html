@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Watch - Game Day printout</title>
+<link rel="icon" href="icon-192.png">
+<style>
+/* On screen: a short form, then the page as it prints. On paper: the page.
+   Mostly white: a big QR code and a few lines, light on ink. */
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #1b1b22; background: #1d2433; }
+#form { max-width: 640px; margin: 0 auto; padding: 24px 18px; color: #eef3ff; }
+#form h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: 0.05em; }
+#form p { color: #c3cde3; margin: 8px 0; }
+#form label { display: block; margin: 14px 0 6px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #9fb0d0; }
+#form input { font: 900 26px ui-monospace, monospace; letter-spacing: 0.2em; text-transform: uppercase; padding: 10px 14px; border-radius: 12px; border: 1px solid #44608f; background: #0d1626; color: #fff; width: 100%; max-width: 320px; }
+#form button { font: inherit; font-weight: 700; padding: 12px 16px; border-radius: 12px; border: 1px solid #44608f; background: #23324d; color: #fff; }
+#form button.go { background: linear-gradient(180deg, #2f7fff, #0b4bb0); border-color: #8ab8ff; }
+#form .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+#form a { color: #8ab8ff; word-break: break-all; }
+.sheet { width: 210mm; height: 270mm; margin: 12px auto; background: #fff; padding: 12mm 14mm; position: relative; overflow: hidden; box-shadow: 0 4px 24px #0008; }
+.sheet h2 { font: 900 15mm/1 system-ui, sans-serif; text-align: center; margin: 4mm 0 2mm; letter-spacing: 0.02em; }
+.sheet h2 .byu { color: #0b3b8c; } .sheet h2 .ute { color: #c8102e; }
+.sheet .sub { text-align: center; font: 700 15pt system-ui, sans-serif; color: #444; margin: 0 0 7mm; letter-spacing: 0.08em; text-transform: uppercase; }
+.sheet .qr { display: block; width: 105mm; height: 105mm; margin: 0 auto; image-rendering: pixelated; }
+.sheet .scan { text-align: center; font: 900 16pt system-ui, sans-serif; margin: 3mm 0 0; }
+.sheet ol { font-size: 13pt; margin: 8mm 10mm 0; padding-left: 8mm; color: #222; }
+.sheet ol li { margin: 0 0 3mm; }
+.sheet .foot { position: absolute; left: 0; right: 0; bottom: 8mm; text-align: center; font-size: 9.5pt; color: #888; }
+@page { size: auto; margin: 0; }
+@media print {
+  body { background: #fff; }
+  #form { display: none; }
+  .sheet { margin: 0; box-shadow: none; }
+}
+@media (max-width: 820px) {
+  .sheet { transform: scale(calc((100vw - 16px) / 210mm)); transform-origin: top left; margin: 0 8px calc((100vw - 16px) / 210mm * 270mm - 270mm); }
+}
+</style>
+</head>
+<body>
+<div id="form">
+  <h1>🏈 GAME DAY PRINTOUT</h1>
+  <p>One QR code for the party. Scanning it opens the BYU vs Utah Bunker - no room code, no markers. The first device in runs the game and everybody after joins it.</p>
+  <p><b>Best:</b> open the link on the TV first (it plays the music and shows the field), then everyone scans. No TV? The first phone to scan runs it - keep that phone in the game.</p>
+  <label for="party">Party name</label>
+  <input id="party" maxlength="12" autocomplete="off" spellcheck="false">
+  <p style="font-size:14px">Letters and numbers. Anyone with the same name lands in the same game, so keep it unusual.</p>
+  <div class="row"><button class="go" id="print" type="button">🖨 PRINT</button><button id="fresh" type="button">New name</button></div>
+  <p style="font-size:14px">The link: <a id="link"></a></p>
+</div>
+<div id="pages"></div>
+
+<script src="qr.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+function recall(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function store(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+function clean(s){ return (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12); }
+function fresh(){
+  const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let s = 'GAMEDAY';
+  for(let i = 0; i < 4; i++) s += a[Math.floor(Math.random() * a.length)];
+  return s;
+}
+const q = new URLSearchParams(location.search);
+$('party').value = clean(q.get('party')) || clean(recall('nwatch_party')) || fresh();
+
+function base(){ return location.href.split('#')[0].split('?')[0].replace(/party\.html$/, ''); }
+function link(){ return base() + 'gameday/?party=' + clean($('party').value); }
+
+function qrImg(text){
+  const m = qrMatrix(text, 'M'), n = m.length, s = 10;
+  const c = document.createElement('canvas');
+  c.width = c.height = (n + 8) * s;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = '#000';
+  for(let y = 0; y < n; y++) for(let x = 0; x < n; x++) if(m[y][x]) g.fillRect((x + 4) * s, (y + 4) * s, s, s);
+  return c.toDataURL();
+}
+
+function draw(){
+  const p = clean($('party').value) || fresh();
+  store('nwatch_party', p);
+  const url = link();
+  $('link').textContent = url; $('link').href = url;
+  $('pages').innerHTML = `<section class="sheet">
+    <h2><span class="byu">BYU</span> vs <span class="ute">UTAH</span></h2>
+    <p class="sub">Hold the line · a game for every phone</p>
+    <img class="qr" src="${qrImg(url)}" alt="scan to play">
+    <p class="scan">Scan with your phone camera</p>
+    <ol>
+      <li><b>Type your name and tap PLAY.</b> Everyone lands in the same game - no codes.</li>
+      <li><b>Everyone points their phone at the TV</b> and taps <b>LOCK FRONT</b>, so you all see the same field.</li>
+      <li>Tap <b>READY</b>. Turn your whole body to aim, hold a finger down to fire mini Cosmos, use the stick to walk.</li>
+      <li>Utes are coming from every side. Hold the line. Phone drifted? Point at the TV and tap ⌖ FRONT.</li>
+    </ol>
+    <div class="foot">Night Watch · party ${p} · ${url.replace(/^https?:\/\//, '')}</div>
+  </section>`;
+}
+$('party').addEventListener('input', draw);
+$('fresh').addEventListener('click', () => { $('party').value = fresh(); draw(); });
+$('print').addEventListener('click', () => window.print());
+draw();
+window.NW_PARTY = {link};
+</script>
+</body>
+</html>

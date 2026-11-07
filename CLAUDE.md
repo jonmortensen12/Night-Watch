@@ -24,6 +24,7 @@ Run the checks from the repo root.
 node simcheck.mjs    # the simulations, headless: space, the bunker and the Haunted House, tuning with computer players
 node netcheck.mjs    # the TV and phones in Chromium over ?local=1: space, a phone-hosted game, then the bunker
 node markcheck.mjs   # printed markers with a pretend camera: Bunker walking a drawn boundary, Space facing the same way
+node partycheck.mjs  # the Game Day party link: first in hosts, the rest join, a TV hosts or watches
 node hauntcheck.mjs  # the shelved Haunted House (and the print page) with a pretend camera
 node tools/art.mjs   # redraw the icons and link preview after changing how ships or the sky look
 python3 tools/samples.py && python3 tools/music.py   # re-render web/music/ after changing a piece

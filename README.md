@@ -24,6 +24,10 @@ blood — they go poof.
 
 Each game has its own link: **`/space/`** and **`/bunker/`**.
 
+**Game day party** (`/party.html`): prints one QR code that opens the
+BYU vs Utah Bunker in a fixed room - no codes, no markers. The first device
+in runs the game (open it on the TV first if there is one).
+
 **Printed markers** (optional, `/markers/print.html`): tape them round the
 room and pick them in the lobby. Everybody's phone faces the same way with
 no LOCK FRONT. In the Bunker you can also walk the room for real: draw the

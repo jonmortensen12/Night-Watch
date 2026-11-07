@@ -21,6 +21,7 @@ Fire-Stick-bound), a full working game. Working title.
 |---|---|
 | `web/index.html` | The front page: a menu, Space or Bunker, play or show on a TV, print markers. |
 | `web/space/`, `web/bunker/` | Each game's own link. A phone goes to `play.html?game=…`, a big screen to `tv.html?game=…` (`?tv=1` makes a phone or tablet the TV). |
+| `web/party.html`, `web/gameday/` | The Game Day party printout: one QR code to `/gameday/?party=NAME`, which opens the Game Day Bunker in a fixed room with no codes and no markers. See "The party link" below. |
 | `web/tv.html` | The TV. Hosts the room (or, with `?watch=CODE`, watches a phone's game), draws the battle, plays the music. `?game=` fixes the game. |
 | `web/play.html` | The phone. Joins a room, or hosts one itself ("START A GAME ON THIS PHONE"). `?game=` fixes the game. |
 | `web/markers/` | Printed markers, an option in both games: `kit.js` (the phone side), `markers.js` (find them), `room.js` (the survey, the boundary, finding yourself), `print.html`, `simcam.js` (a pretend camera for the checks). See "Printed markers" below. |
@@ -437,6 +438,30 @@ the look changes; every rule is the same.
 - `node tools/lookshots.mjs gameday` puts the monsters, the minis, a phone
   and a TV mid-game (and a Swoop wave) in `shots/look-gameday-*.png`;
   `tools/gallery.html` is the portrait page it uses.
+
+### The party link (`party.html`, `/gameday/?party=NAME`)
+
+For the game-day party: a printed QR code and nothing to type. `party.html`
+prints one page (party name kept in localStorage, editable; anyone using the
+same name lands in the same game, so it is GAMEDAY + four random letters).
+`/gameday/` sends a phone to `play.html?game=zombie&party=NAME`, a big screen
+to `tv.html?...&tv=1`. Both use the fixed PeerJS id `party-NAME`:
+
+- The first device in hosts it (`createHost({code: 'party-NAME'})`), and
+  sets the look to Game Day and markers to Off (`setLook`, `setMarkers`,
+  sent again by each new host so a stale saved setting can't win).
+- A phone joins first; a room nobody holds (`peer-unavailable` or a 9 s
+  timeout) is hosted by this phone. Two at once: the loser gets `taken`
+  (`onTaken`) and joins the winner.
+- The phone running it leaves: the others reconnect, fail twice, and the
+  first to try hosts afresh (a new game from the lobby - the old game is
+  not carried over).
+- A TV opening the link hosts if it is first (best: it plays the music); if
+  a phone already runs it, the TV watches that game, and takes over when
+  that phone goes.
+- Party pages hide the code box, "start a game on this phone", the look and
+  the marker rows. LOCK FRONT is the only setup.
+- `node partycheck.mjs` runs all of this over `?local=1`.
 
 ## The page must never zoom
 

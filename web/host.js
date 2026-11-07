@@ -327,6 +327,7 @@ export function createHost(opts){
     // the TV's own keyboard
     key: k => { if(k === 'go') go(); },
     setLook: key => fromPhone({id: '-', role: 'player'}, {t: 'look', key}),
+    setMarkers: m => fromPhone({id: '-', role: 'player'}, {t: 'markers', mode: m}),
     destroy: () => { dead = true; clearInterval(timer); if(handle) handle.destroy(); },
   };
   return api;

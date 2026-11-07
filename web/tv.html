@@ -181,6 +181,10 @@ const $ = id => document.getElementById(id);
 const isLocal = NWNet.isLocal();
 const params = new URLSearchParams(location.search);
 const GAME = ['space', 'zombie'].indexOf(new URLSearchParams(location.search).get('game')) >= 0 ? new URLSearchParams(location.search).get('game') : null;
+/* A party link (party.html): one fixed room, the Game Day Bunker, no
+   markers. The TV runs it if it gets there first, and watches the phone
+   that is running it otherwise. */
+const PARTY = (params.get('party') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || null;
 $('soloLink').href = 'play.html?' + (GAME ? 'game=' + GAME + '&' : '') + (isLocal ? 'local=1' : '');
 const low = params.get('q') === 'low';
 const world = new World($('view'), {mode: 'tv', low});
@@ -192,7 +196,11 @@ let S = null, room = null, host = null, watching = false, conn = null;
 let fenceL = null, fenceShown = 'none', watchedLayout = null;   // a bunker drawn round the room (see setFence)
 
 /* The TV hosts, unless it was asked to watch a phone's game. */
-if(params.has('watch')){
+if(PARTY){
+  $('modePick').style.display = 'none';
+  $('lookPick').style.display = 'none';
+  hostParty();
+} else if(params.has('watch')){
   watching = true;
   const c = (params.get('watch') || '').toUpperCase();
   if(c.length === 4) watch(c); else $('watchForm').classList.remove('off');
@@ -201,6 +209,23 @@ if(params.has('watch')){
   host = createHost({tv: true, mode: GAME || undefined, onSnap: s => onSnap(s), onRoom: r => { room = r; drawRoom(); }, onLayout: L => setFence(L)});
   fenceL = host.fence();
   if(GAME) $('modePick').style.display = 'none';
+}
+
+function hostParty(){
+  watching = false;
+  $('lobby').classList.remove('off');
+  const h = host = createHost({tv: true, mode: 'zombie', code: 'party-' + PARTY,
+    onSnap: s => onSnap(s), onRoom: r => { room = r; drawRoom(); }, onLayout: L => setFence(L),
+    onTaken: () => {
+      // a phone is running the party: show its game
+      h.destroy(); if(host === h) host = null;
+      watching = true;
+      $('lobby').classList.add('off');
+      watch('party-' + PARTY);
+    }});
+  host.setLook('gameday');
+  host.setMarkers('off');
+  fenceL = null;
 }
 
 $('wf').addEventListener('submit', e => { e.preventDefault(); watch($('watchCode').value.toUpperCase().replace(/[^A-Z0-9]/g, '')); });
@@ -218,14 +243,17 @@ function watch(code){
       clearInterval(watch.ping);
       watch.ping = setInterval(() => { try { c.send({t: 'ping'}); } catch(e){} }, 1000);
     },
-    error: t => { $('watchForm').classList.remove('off'); $('watchMsg').textContent = t === 'peer-unavailable' ? 'No game called ' + code : 'Could not connect: ' + t; }
+    error: t => {
+      // the phone running the party went: run it here
+      if(PARTY){ if(!host) setTimeout(() => { if(!host) hostParty(); }, 800 + Math.random() * 800); return; }
+      $('watchForm').classList.remove('off'); $('watchMsg').textContent = t === 'peer-unavailable' ? 'No game called ' + code : 'Could not connect: ' + t; }
   });
 }
 
 const NET_LABEL = {wifi: '📶 Wi-Fi', internet: '🌐 Internet', relay: '☁️ Cloudflare', host: '📱 host'};
 function drawRoom(){
   if(!room) return;
-  $('code').textContent = room.code || '····';
+  $('code').textContent = PARTY ? (room.code ? PARTY : '····') : room.code || '····';
   $('status').textContent = room.status || '';
   const url = controllerUrl();
   $('url').textContent = room.code ? url.replace(/^https?:\/\//, '') : '';
@@ -246,7 +274,7 @@ function drawRoom(){
     ways.some(p => p.net === 'relay') ? 'Some phones are going through the Cloudflare relay.' : 'Some phones are reaching this TV over the internet, not this Wi-Fi.') : '';
   switchMode(room.mode === 'zombie' ? 'zombie' : 'space');
   [...$('modePick').querySelectorAll('button')].forEach(b => b.classList.toggle('sel', b.dataset.mode === (room.mode || 'space')));
-  $('lookPick').style.display = (room.mode || 'space') === 'zombie' ? '' : 'none';
+  $('lookPick').style.display = (room.mode || 'space') === 'zombie' && !PARTY ? '' : 'none';
   [...$('lookPick').querySelectorAll('button')].forEach(b => b.classList.toggle('sel', b.dataset.look === (room.look || 'halloween')));
   $('hint').innerHTML = n ? 'Tap <b>READY</b> on every phone to launch (or press <b>Enter</b> here).' +
     (room.best ? '<br>Best here: wave ' + room.best + ' · ' + room.bestScore.toLocaleString() + ' points' : '') : 'Waiting for phones...';
@@ -254,6 +282,7 @@ function drawRoom(){
 let qrFor = '';
 function controllerUrl(){
   const base = location.href.split('#')[0].split('?')[0].replace(/[^/]*$/, '');
+  if(PARTY) return base + 'gameday/?party=' + PARTY + (isLocal ? '&local=1' : '');
   return base + 'play.html' + (isLocal ? '?local=1' : '') + '#' + (room && room.code || '');
 }
 function drawQr(cv, text){

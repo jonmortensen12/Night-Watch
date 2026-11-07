@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Watch: Game Day</title>
+<meta property="og:title" content="Night Watch: Game Day - BYU vs Utah">
+<meta property="og:image" content="../og.png">
+<link rel="icon" href="../icon-192.png">
+<script>
+/* /gameday/?party=CODE: the printed party link. A phone plays, a big screen
+   is the TV; both go to the one room, the Game Day Bunker, no markers. */
+(function(){
+  var q = new URLSearchParams(location.search);
+  var phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+  var page = (q.has('tv') || !phone) ? '../tv.html' : '../play.html';
+  if(!q.get('party')){ location.replace('../party.html'); return; }
+  q.set('game', 'zombie');
+  if(page === '../tv.html') q.set('tv', '1');
+  location.replace(page + '?' + q.toString());
+})();
+</script>
+</head>
+<body style="background:#05070f"></body>
+</html>

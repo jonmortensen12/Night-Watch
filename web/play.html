@@ -56,6 +56,9 @@ input { font: inherit; font-size: 18px; width: 100%; padding: 14px; border-radiu
 #pick button { flex: 1; padding: 12px 6px; font-size: 16px; background: #0d1626; }
 #pick button.sel { background: #1d4f8a; border-color: #6fd4ff; box-shadow: 0 0 14px #1a8cff55; }
 body.locked .gamePick { display: none !important; }
+/* a party link: no codes to type, the Game Day Bunker, no markers */
+body.party label[for=codeIn], body.party #codeIn, body.party #join .or, body.party #hostBtn, body.party #join p.small,
+body.party #lookLbl, body.party #lookOpts, body.party #mkLbl, body.party #mkOpts, body.party #mkHelp, body.party #mkRow { display: none !important; }
 label { display: block; color: var(--dim); font-size: 13px; margin: 14px 0 6px; letter-spacing: 0.08em; text-transform: uppercase; }
 
 /* joining */
@@ -210,7 +213,7 @@ body.mode-zombie #top { justify-content: space-between; }
   </div>
   <label>Music</label>
   <div class="themes" id="themes"></div>
-  <label>Printed markers <a href="markers/print.html" style="color:var(--acc);text-transform:none;letter-spacing:0;font-size:12px" target="_blank">print</a></label>
+  <label id="mkLbl">Printed markers <a href="markers/print.html" style="color:var(--acc);text-transform:none;letter-spacing:0;font-size:12px" target="_blank">print</a></label>
   <div class="themes" id="mkOpts">
     <button data-mk="off">Off</button>
     <button data-mk="face">Face the same way</button>
@@ -251,6 +254,16 @@ if(GAME){
   document.body.classList.add('locked');
   document.title = GAME === 'zombie' ? 'Night Watch: Bunker' : 'Night Watch: Space';
 }
+/* A party link (party.html prints it as a QR code): one fixed room, the
+   Bunker in its Game Day look, no markers - LOCK FRONT as always. The first
+   phone in runs the game; everyone after joins it, nobody types a code. If
+   the phone running it goes, the next one to look starts the room again. */
+const PARTY = (new URLSearchParams(location.search).get('party') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || null;
+if(PARTY){
+  document.body.classList.add('party', 'locked');
+  document.title = 'Night Watch: Game Day';
+}
+const partyRoom = () => 'party-' + PARTY;
 function box(){ return isLocal ? sessionStorage : localStorage; }
 function store(k, v){ try { box().setItem(k, v); } catch(e){} }
 function recall(k){ try { return box().getItem(k); } catch(e){ return null; } }
@@ -468,6 +481,10 @@ $('tvLink').href = 'tv.html?tv=1' + (GAME ? '&game=' + GAME : '') + (isLocal ? '
    game by accident - and the host ignores it once a game is running). */
 let pickMode = recall('nwatch_mode') === 'zombie' ? 'zombie' : 'space', pickTapped = false;
 if(GAME){ pickMode = GAME; pickTapped = true; }
+if(PARTY){
+  pickMode = 'zombie';
+  $('joinBtn').textContent = 'PLAY';
+}
 function paintPick(){
   [...$('pick').children].forEach(b => b.classList.toggle('sel', b.dataset.mode === pickMode));
   $('joinTag').textContent = pickMode === 'zombie'
@@ -482,6 +499,7 @@ $('pick').addEventListener('click', e => {
   paintPick();
 });
 paintPick();
+if(PARTY) $('joinTag').textContent = 'BYU vs Utah. Hold the line: Utes on every side. Put in your name and tap PLAY.';
 
 function readName(){
   myName = $('nameIn').value.trim().slice(0, 14) || 'Gunner';
@@ -508,6 +526,7 @@ function begin(){
 $('joinForm').addEventListener('submit', e => {
   e.preventDefault();
   readName();
+  if(PARTY){ code = partyRoom(); begin(); connect(false); return; }
   code = $('codeIn').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if(code.length !== 4){ $('joinMsg').textContent = 'The room code is the four letters on the TV.'; return; }
   begin();
@@ -529,12 +548,39 @@ $('hostBtn').addEventListener('click', () => {
   musicBtn();
 });
 
+function hostParty(){
+  if(host) return;
+  try { if(handle) handle.destroy(); } catch(e){}
+  handle = null; conn = null; clearTimeout(retryTimer); retries = 0;
+  roomTv = false;
+  const h = host = createHost({tv: false, mode: 'zombie', code: partyRoom(),
+    onRoom: r => { room = r; drawRoom(); },
+    onTaken: () => {
+      // somebody else got there first: join them
+      h.destroy();
+      if(host === h){ host = null; localLink = null; }
+      setTimeout(() => connect(true), 300 + Math.random() * 700);
+    }});
+  localLink = host.local(myName, devId, onHost);
+  localLink.send({t: 'look', key: 'gameday'});
+  localLink.send({t: 'markers', mode: 'off'});
+  $('netTag').textContent = NET_LABEL.host; netKind = null;
+  $('dot').classList.remove('off');
+  $('joinBtn').disabled = false; $('joinMsg').textContent = '';
+  note('');
+  musicDecided = true; SND.setMusic(true); musicBtn();
+  if(!joined){ joined = true; enterGame(); }
+  keepAwake();
+}
+
 function connect(auto){
+  if(host) return;
   try { if(handle) handle.destroy(); } catch(e){}
   conn = null;
   clearTimeout(retryTimer);
-  if(!auto){ $('joinBtn').disabled = true; $('joinMsg').textContent = 'Finding room ' + code + '...'; }
+  if(!auto){ $('joinBtn').disabled = true; $('joinMsg').textContent = PARTY ? 'Looking for the game...' : 'Finding room ' + code + '...'; }
   handle = NWNet.join(code, {
+    timeout: PARTY ? (isLocal ? 1500 : 9000) : undefined,
     open: c => {
       conn = c; retries = 0;
       c.on('data', onHost);
@@ -548,6 +594,8 @@ function connect(auto){
       keepAwake();
     },
     error: t => {
+      // a party room nobody holds (yet, or any more): this phone runs it
+      if(PARTY && (t === 'peer-unavailable' || t === 'timeout') && (!joined || retries >= 2)) return hostParty();
       if(auto || joined) return later();
       $('joinBtn').disabled = false;
       $('joinMsg').textContent =
@@ -593,6 +641,16 @@ function later(){
   retryTimer = setTimeout(() => connect(true), wait);
 }
 function dropped(){ later(); }
+/* A party room's host can vanish without a word (its tab shut, its phone
+   asleep): no snapshots for a while and this phone stops waiting, so the
+   room is found again - or run here. */
+if(PARTY) setInterval(() => {
+  if(conn && !host && lastSnap && performance.now() - lastSnap > 6000 && document.visibilityState === 'visible'){
+    const c = conn; lastSnap = 0;
+    try { c.close(); } catch(e){}
+    if(conn === c) later();
+  }
+}, 1000);
 $('note').addEventListener('click', () => { retries = 0; connect(true); });
 document.addEventListener('visibilitychange', () => {
   if(document.visibilityState === 'visible'){
@@ -619,10 +677,11 @@ function enterGame(){
     $('lockTitle').textContent = roomTv ? 'Point at the TV' : 'Point at FRONT';
     $('lockText').textContent = roomTv
       ? 'Everyone points at the same TV, so you all share one sky. You can do this again any time with ⌖ FRONT.'
+      : PARTY ? 'Everyone points at the same thing - the TV with the game on is perfect. That is FRONT. Re-do it any time with ⌖ FRONT.'
       : 'Agree on something in the room - a door, a lamp - and everyone points at it. That is FRONT. Re-do it any time with ⌖ FRONT.';
     if(/iPhone|iPad/.test(navigator.userAgent)) $('lockText').textContent += ' Tip: turn on Rotation Lock in Control Centre, or the screen flips when you look straight up.';
   }
-  location.hash = code || '';
+  if(!PARTY) location.hash = code || '';
 }
 $('lockGo').addEventListener('click', () => {
   if(dragMode || lockFront() !== false) $('lockScr').classList.remove('on');
@@ -925,8 +984,9 @@ function drawRoom(){
   if(host && room.code){
     $('qrBox').style.display = 'block';
     $('hostRow').style.display = '';
-    $('qrCode').textContent = room.code;
-    const url = location.href.split('#')[0].split('?')[0] + (isLocal ? '?local=1' : '') + '#' + room.code;
+    $('qrCode').textContent = PARTY ? '' : room.code;
+    const url = PARTY ? location.href.split('#')[0]
+      : location.href.split('#')[0].split('?')[0] + (isLocal ? '?local=1' : '') + '#' + room.code;
     if(qrFor !== url){ qrFor = url; drawQr($('qr'), url); }
   } else if(host) $('lobbySub').textContent = room.status || '';
   const rm = room.mode || 'space';
