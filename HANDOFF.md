@@ -500,8 +500,8 @@ ground and road textures, so a bandit's rock stays put on the ground.
 2. **Red Rock Canyon** - bandits behind boulders and up on the rim, dynamite throwers.
 3. **Vulture Gulch** - vultures circling overhead that dive for the cargo.
 4. **The Old Mine** - a timbered tunnel, dark but for lanterns: bat swarms, bandits in mine carts on rails alongside.
-5. **Gallows Gorge** - a trestle bridge over a river far below: rope bandits swing in from gallows posts, cliff throwers, vultures.
-6. **Outlaw's Pass** - sunset, the boss: **the Balloon Baron** in a patched hot-air balloon, dropping dynamite and sending his gang down ropes. Torn at 2/3 and 1/3.
+5. **Hangman's Gorge** - a trestle bridge over a river far below: bandits leap onto the wagon from the tops of sandstone pillars beside it, cliff throwers, vultures.
+6. **Outlaw's Pass** - sunset, the boss: **the Balloon Baron** in a patched hot-air balloon, dropping dynamite, his gang jumping from the basket. Torn at 2/3 and 1/3.
 
 During the 10 s stop between stages the next stage's scenery comes up.
 Every stage also has a supply crate or two by the trail: shoot it, +15 to
@@ -513,7 +513,7 @@ and fire (a glint as they aim), and jump aboard if left alone ~15 s;
 hittable while up; **dynamite** is thrown (or dropped by the Baron) in an
 arc and can be shot out of the air; **vultures** circle then dive and peck;
 **bats** flutter down the mine; **carts** keep pace on the mine rails and
-fire; **rope bandits** swing down and land on the wagon. Anybody aboard
+fire; **leaping bandits** jump from rock pillars (or the Baron's basket) and land on the wagon. Anybody aboard
 hurts the wagon steadily until shot off. The wagon has 100 health; at 0
 the gang gets the gold.
 
@@ -586,6 +586,11 @@ the outlaws, partners, vultures, bats, the balloon (no animated cowboy
 reached us - see ASSETS.md). `tools/modelgallery.html?m=Horse:1.7&rot=3.14`
 shows any of them with an arrow along -z, for checking which way a new one
 faces.
+
+**Nothing hanging** (asked 2026-11-19): no gallows, no noose, nobody
+dangling from a rope anywhere in the game. The gorge's bandits used to wait
+hanging from ropes under gallows posts; they now crouch on sandstone
+pillars and leap. The level name may say "Hangman's"; nothing on screen may.
 
 **Host fix found on the way**: a phone that went quiet for 6 s in the
 lobby was dropped and, coming back, could be given a different colour

@@ -13,7 +13,7 @@
    and from above, and if its health runs out the gang gets the gold.
 
    The trail is a run of stages - Dusty Flats, Red Rock Canyon, Vulture
-   Gulch, the Old Mine, Gallows Gorge, Outlaw's Pass - one a wave, each
+   Gulch, the Old Mine, Hangman's Gorge, Outlaw's Pass - one a wave, each
    with its own scenery and its own kind of trouble. After the Pass the
    trail starts again at dusk, harder.
 
@@ -44,7 +44,7 @@ export const STAGES = [
   {key: 'canyon', name: 'Red Rock Canyon', blurb: 'Bandits behind every rock',          walls: 13,  rim: 15, menu: [['bandit', 1], ['rimbandit', 1.5], ['thrower', 2], ['rider', 2]]},
   {key: 'gulch',  name: 'Vulture Gulch',   blurb: 'Something circling overhead',        walls: 10,  rim: 12, menu: [['vultures', 3], ['rimbandit', 1.5], ['thrower', 2]]},
   {key: 'mine',   name: 'The Old Mine',    blurb: 'Dark tunnels, bats and mine carts',  walls: 4.6, rim: 0,  tunnel: 6.5, menu: [['bats', 3], ['cart', 2]]},
-  {key: 'gorge',  name: 'Gallows Gorge',   blurb: 'A long bridge, and ropes from above', walls: 0,  rim: 0,  bridge: true, menu: [['swinger', 2], ['vultures', 3], ['cliffthrower', 2]]},
+  {key: 'gorge',  name: "Hangman's Gorge", blurb: 'A long bridge, and bandits leaping from the rocks', walls: 0,  rim: 0,  bridge: true, menu: [['swinger', 2], ['vultures', 3], ['cliffthrower', 2]]},
   {key: 'pass',   name: "Outlaw's Pass",   blurb: 'The Balloon Baron himself',          walls: 16,  rim: 18, boss: true, menu: [['rider', 2], ['rimbandit', 1.5], ['thrower', 2]]},
 ];
 
@@ -57,7 +57,7 @@ export const ENEMIES = {
   vulture:  {hp: 1,  r: 0.7,  h: 0,   pts: 75,  name: 'vulture'},
   bat:      {hp: 1,  r: 0.45, h: 0,   pts: 50,  name: 'bat'},
   cart:     {hp: 4,  r: 0.8,  h: 1.3, pts: 150, name: 'mine cart'},
-  swinger:  {hp: 2,  r: 0.6,  h: 0,   pts: 150, name: 'rope bandit'},
+  swinger:  {hp: 2,  r: 0.6,  h: 1.0, pts: 150, name: 'leaping bandit'},
   balloon:  {hp: 45, r: 3.2,  h: 0,   pts: 2500, name: 'Balloon Baron'},
   crate:    {hp: 1,  r: 0.6,  h: 0.4, pts: 0,   name: 'supply crate'},
   tumble:   {hp: 1,  r: 0.6,  h: 0.5, pts: 25,  name: 'tumbleweed'},
@@ -419,7 +419,7 @@ function foeStep(S, f, dt, d){
     }
     case 'swinger': {
       if(f.st === 'wait'){
-        // up on a ledge (or the balloon's ladder) until the wagon is close enough to jump for
+        // up on a rock pillar by the bridge (or in the Baron's basket) until the wagon is close enough to jump for
         f.z += f.fromBalloon ? 0 : scroll;
         if(f.z > -22 || f.fromBalloon){
           f.st = 'swing'; f.t2 = 0; f.x0 = f.x; f.y0 = f.y; f.z0 = f.z;
@@ -432,8 +432,8 @@ function foeStep(S, f, dt, d){
         f.t2 += dt;
         const k = Math.min(1, f.t2 / f.swing), e = k * k * (3 - 2 * k);
         f.x = f.x0 + (f.tx - f.x0) * e; f.z = f.z0 + (f.tz - f.z0) * e;
-        f.y = f.y0 + (f.ty - f.y0) * Math.sin(e * Math.PI / 2) - Math.sin(k * Math.PI) * 3;
-        f.y = Math.max(f.y, f.ty);
+        // a leap: up and over, and down onto the boards
+        f.y = f.y0 + (f.ty - f.y0) * e + Math.sin(k * Math.PI) * 2.5;
         f.aux = k;
         if(k >= 1){ f.st = 'aboard'; f.x = f.tx; f.y = BED; f.z = f.tz; S.ev.push(['aboard', f.id, f.side]); }
       } else if(f.st === 'aboard') hurtWagonSlow(S, f, 6 * d.dmg, dt);
@@ -507,7 +507,7 @@ function balloonStep(S, f, dt, d){
       f.dropT -= dt; f.crewT -= dt;
       if(f.dropT <= 0){ throwDynamite(S, [f.x, f.y - 2.5, f.z], rr(S, 2.6, 3.1)); f.dropT = rr(S, 3.2, 4.6) * d.quick; }
       if(f.crewT <= 0){
-        for(let k = 0; k < 2; k++) newFoe(S, 'swinger', f.x + (k ? 1 : -1) * 0.8, f.y - 4, f.z, {st: 'wait', side: k ? 1 : -1, fromBalloon: 1});
+        for(let k = 0; k < 2; k++) newFoe(S, 'swinger', f.x + (k ? 1 : -1) * 0.5, f.y - 2.1, f.z, {st: 'wait', side: k ? 1 : -1, fromBalloon: 1});
         S.ev.push(['crew', r1(f.x), r1(f.z)]);
         f.crewT = rr(S, 10, 13);
       }

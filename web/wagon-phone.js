@@ -186,11 +186,11 @@ export function createWagonPhone(ctx){
       ctx.callout('DYNAMITE - ' + sideWords(ev[1], ev[3]).toUpperCase() + ' - shoot it!');
     } else if(k === 'blast'){ SND.sfx('blast', new THREE.Vector3(ev[1], ev[2], ev[3])); ctx.buzz([80, 40, 80]); }
     else if(k === 'aboard'){ ctx.callout('BANDIT ON THE WAGON - ' + (ev[2] < 0 ? 'LEFT' : 'RIGHT') + ' SIDE!'); SND.sfx('thump'); ctx.buzz([100, 50, 100]); }
-    else if(k === 'swing'){ const e = trail.foes.get(ev[1]); if(e) ctx.callout('ROPE BANDIT - ' + sideWords(e.d.x, e.d.z)); SND.sfx('yell', at(e)); }
+    else if(k === 'swing'){ const e = trail.foes.get(ev[1]); if(e) ctx.callout('BANDIT JUMPING - ' + sideWords(e.d.x, e.d.z).toUpperCase() + '!'); SND.sfx('yell', at(e)); }
     else if(k === 'dive'){ const e = trail.foes.get(ev[1]); if(e) SND.sfx('screech', at(e)); }
     else if(k === 'supplies'){ ctx.toast(ev[1] === ctx.me() ? 'Supplies! The wagon is patched up' : 'Supplies - the wagon is patched up'); SND.cue('pickup') || SND.sfx('pickup'); }
     else if(k === 'baron'){ SND.cue('baronwarn'); ctx.banner('THE BALLOON BARON', 'Shoot the balloon down before he blows up the gold'); }
-    else if(k === 'crew'){ ctx.callout('His gang are coming down the ropes!'); }
+    else if(k === 'crew'){ ctx.callout('His gang are jumping for the wagon!'); }
     else if(k === 'torn'){ ctx.toast(ev[1] === 1 ? 'The balloon is torn!' : 'It is going down - keep shooting!'); SND.sfx('rip'); }
     else if(k === 'barondown'){ ctx.banner('THE BARON IS DOWN!', ''); SND.cue('victory'); }
     else if(k === 'loaded' && ev[1] === ctx.me()){ ammo = GUN.rounds; reloading = 0; wantReload = false; trail.reloading(false); }
