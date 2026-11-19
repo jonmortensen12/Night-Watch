@@ -12,6 +12,7 @@
 
    No blood anywhere: a monster that is shot flashes and throws sparks; one
    that is finished goes "poof" in coloured smoke and sweets. */
+import {powered, adaptDpr} from './power.js';
 import * as THREE from 'three';
 import {EffectComposer} from './lib/postprocessing/EffectComposer.js';
 import {RenderPass} from './lib/postprocessing/RenderPass.js';
@@ -464,6 +465,7 @@ export class Yard {
     this._resize = () => this.resize();
     addEventListener('resize', this._resize);
     this.frameTimes = [];
+    powered(this);
   }
 
   dispose(){
@@ -1218,13 +1220,5 @@ export class Yard {
     this.cam.lookAt(c[0], 0, c[1] - 2.5 * k);
   }
 
-  adapt(dt){
-    this.frameTimes.push(dt);
-    if(this.frameTimes.length < 90) return;
-    const avg = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-    this.frameTimes = [];
-    if(avg > 0.024 && this.dpr > 1){ this.dpr = Math.max(1, this.dpr - 0.25); this.resize(); }
-    else if(avg > 0.03 && this.dpr <= 1 && this.composer) this.composer = null;
-    else if(avg < 0.0135 && this.dpr < this.maxDpr){ this.dpr = Math.min(this.maxDpr, this.dpr + 0.25); this.resize(); }
-  }
+  adapt(dt){ adaptDpr(this, dt); }
 }

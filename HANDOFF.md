@@ -539,7 +539,13 @@ spots in their colour, rings round anything urgent, the Baron's health,
 the wagon's health and the stage at the bottom, each player's spot
 ("second left") and bullets on the scoreboard.
 
-**Sound**: revolver crack and echo, outlaws' shots with ricochets, the
+**Sound**: the revolver is a shot made once into a buffer (`gunshot` in
+sound.js, three variations): a millisecond edge and a ~10 ms crack, a
+blast and a falling 255 -> 95 Hz boom gone in a tenth of a second (nothing
+below ~100 Hz: phone speakers do not play it), canyon echoes 20-30 dB down
+and a short rumble - it used to be steady noise, which sounded like a
+hiss. Outlaws' shots are the same, further off (duller, more echo); the
+Bunker's pistol and shotgun use it too, pitched up and down. Also: outlaws' shots with ricochets, the
 cylinder spin and the hammer cocking, fuse hiss, blasts, hooves, a
 "yee-haw" yell, vulture screech, the balloon's burner, cloth ripping.
 **Music** (new instruments in `samples.py`: steel and nylon guitar,
@@ -614,6 +620,21 @@ screen may look like one.
 lobby was dropped and, coming back, could be given a different colour
 without being told - it then read somebody else's player (the wrong
 bullets, the wrong score). The host now says `you` again on every return.
+
+## Not cooking the phone (`web/power.js`)
+
+Asked 2026-11-19: "my phone gets really warm". All three renderers
+(world.js, yard.js, trail.js) register with `power.js`:
+- **Resolution**: a phone draws at most 1.5x its CSS pixels (it was 2x; a
+  TV may still do 2x). Each renderer still steps down by itself when
+  frames run slow (`adaptDpr`), judged against the frame rate it is meant
+  to keep (`budget`), so a deliberate cap is not taken for a slow phone.
+- **Frame rate**: play.html draws at most 60 fps (120 Hz phones would
+  otherwise draw 120), and 20 while the join screen, lobby, results or
+  LOCK FRONT cover it.
+- **Battery saver** (the lobby's switch, `nwatch_saver` on the phone): 30
+  fps, 1x, no bloom. The TV page never saves - it is plugged in.
+The camera (printed markers) and the sensors are untouched by the cap.
 
 ## The page must never zoom
 

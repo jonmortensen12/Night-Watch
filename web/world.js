@@ -15,6 +15,7 @@
    start-up. The landmarks in it (the ringed planet, the sun, the red nebula,
    the moon) are fixed so that people can call things out: "under the
    planet!" */
+import {powered, adaptDpr} from './power.js';
 import * as THREE from 'three';
 import {EffectComposer} from './lib/postprocessing/EffectComposer.js';
 import {RenderPass} from './lib/postprocessing/RenderPass.js';
@@ -618,6 +619,7 @@ export class World {
     this.resize();
     addEventListener('resize', () => this.resize());
     this.frameTimes = [];
+    powered(this);
   }
 
   setupComposer(){
@@ -1218,19 +1220,5 @@ export class World {
   }
 
   /* A slow phone draws fewer pixels rather than fewer frames. */
-  adapt(dt){
-    this.frameTimes.push(dt);
-    if(this.frameTimes.length < 90) return;
-    const avg = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-    this.frameTimes = [];
-    if(avg > 0.024 && this.dpr > 1){
-      this.dpr = Math.max(1, this.dpr - 0.25);
-      this.resize();
-    } else if(avg > 0.03 && this.dpr <= 1 && this.composer){
-      this.composer = null;       // last resort: no bloom
-    } else if(avg < 0.0135 && this.dpr < this.maxDpr){
-      this.dpr = Math.min(this.maxDpr, this.dpr + 0.25);
-      this.resize();
-    }
-  }
+  adapt(dt){ adaptDpr(this, dt); }
 }

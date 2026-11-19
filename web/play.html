@@ -122,6 +122,7 @@ body.drag #fireBtn { display: flex; }
 .themes { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .themes button { padding: 8px 10px; font-size: 13px; flex: 1; min-width: 30%; }
 .themes button.sel { background: #1d4f8a; border-color: #6fd4ff; }
+#saverBtn.sel { background: #2a5a2a; border-color: #8aff9a; }
 #qrBox { display: none; text-align: center; margin: 6px 0 10px; }
 #qrBox canvas { position: static; width: 168px; height: 168px; background: #fff; border-radius: 10px; padding: 8px; display: inline-block; }
 #qrBox .code { font-size: 30px; letter-spacing: 0.3em; font-weight: 900; color: var(--acc); }
@@ -233,6 +234,8 @@ body.mode-wagon #top { justify-content: space-between; }
   </div>
   <p class="sub" id="mkHelp" style="margin:6px 0 0"></p>
   <div class="row" id="mkRow" style="display:none"><button class="alt" id="mkSetup">SET UP MARKERS</button></div>
+  <div class="row"><button class="alt" id="saverBtn" type="button">🔋 Battery saver: off</button></div>
+  <p class="sub" id="saverHelp" style="margin:4px 0 0">Phone getting warm? The saver draws fewer frames and pixels, and skips the glow.</p>
   <div class="row"><button class="big go" id="readyBtn">READY</button></div>
   <div class="row" id="hostRow" style="display:none"><button class="big alt" id="startNow">START NOW</button></div>
   <p class="small" id="record"></p>
@@ -255,6 +258,7 @@ import {COLORS, LASER, MISSILE, TYPES} from './sim.js';
 import * as SND from './sound.js';
 import {createZombiePhone} from './zombie-phone.js';
 import {createWagonPhone} from './wagon-phone.js';
+import {POWER, setSaver, fpsFor, setBudget} from './power.js';
 import {awards as wAwards, STAGES as W_STAGES, seatName} from './wsim.js';
 import {awards as zAwards, SECTIONS, MONSTERS, ROOM, sectionsOf} from './zsim.js';
 import {createMarkerKit} from './markers/kit.js';
@@ -1085,6 +1089,10 @@ $('seats').addEventListener('click', e => {
   store('nwatch_seat', b.dataset.seat);
 });
 
+function paintSaver(){ $('saverBtn').textContent = '🔋 Battery saver: ' + (POWER.saver ? 'on' : 'off'); $('saverBtn').classList.toggle('sel', POWER.saver); }
+$('saverBtn').addEventListener('click', () => { SND.unlock(); SND.sfx('click'); setSaver(!POWER.saver); paintSaver(); });
+paintSaver();
+
 let ready = false;
 $('modes').addEventListener('click', e => {
   const b = e.target.closest('button');
@@ -1184,8 +1192,17 @@ function zResults(){
 
 /* ---------- the loop ---------- */
 let lastT = performance.now();
+/* Not cooking the phone (power.js): at most 60 frames a second in play
+   (some phones would draw 120), 30 with the battery saver, and 20 while a
+   menu covers the screen. */
+let lastDraw = 0;
 function frame(){
   requestAnimationFrame(frame);
+  const menu = !joined || $('lobby').classList.contains('on') || $('over').classList.contains('on') || $('lockScr').classList.contains('on');
+  const fps = fpsFor(menu);
+  if(performance.now() - lastDraw < 1000 / fps - 3) return;
+  lastDraw = performance.now();
+  setBudget(fps);
   const now = performance.now(), dt = Math.min(0.1, (now - lastT) / 1000);
   lastT = now;
   if(joined) kit.frame(dt);

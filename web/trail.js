@@ -17,6 +17,7 @@
    last snapshot put them plus their velocity times its age, eased.
 
    No blood: a bandit who is shot loses his hat in a puff of dust. */
+import {powered, adaptDpr} from './power.js';
 import * as THREE from 'three';
 import {EffectComposer} from './lib/postprocessing/EffectComposer.js';
 import {RenderPass} from './lib/postprocessing/RenderPass.js';
@@ -594,6 +595,7 @@ export class Trail {
     this.resize();
     this._resize = () => this.resize();
     addEventListener('resize', this._resize);
+    powered(this);
     this.setStage(0, 0, true);
     askModels().then(() => this.useModels());
     if(this.tv){ this.cam.position.set(0, 7.5, 12); this.cam.lookAt(0, 1.5, -10); }
@@ -1526,12 +1528,5 @@ export class Trail {
   }
 
   /* hold the frame rate up on a slow phone */
-  adapt(dt){
-    this.frameTimes.push(dt);
-    if(this.frameTimes.length < 60) return;
-    const avg = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-    this.frameTimes.length = 0;
-    if(avg > 1 / 40 && this.dpr > 1){ this.dpr = Math.max(1, this.dpr - 0.25); this.resize(); }
-    else if(avg < 1 / 58 && this.dpr < this.maxDpr){ this.dpr = Math.min(this.maxDpr, this.dpr + 0.25); this.resize(); }
-  }
+  adapt(dt){ adaptDpr(this, dt); }
 }

@@ -105,21 +105,93 @@ function tone(t, type, f0, f1, dur, dest, vol){
   o.start(t); o.stop(t + dur + 0.02);
 }
 
+/* A revolver shot, as a buffer: what a real one is made of, not a hiss.
+   - the crack: a millisecond-sharp edge, then a bright burst gone in ~10 ms
+     (the supersonic bullet and the muzzle);
+   - the blast: a loud thump of low noise and a falling 255 -> 95 Hz tone
+     (no lower: a phone's speaker plays nothing below ~150 Hz), gone in a
+     tenth of a second (the gas leaving the barrel);
+   - the West answering: three or four echoes off the canyon walls, each
+     later one duller, and a short rumbling tail.
+   Softly clipped, so it is loud without spiking. far: an outlaw's, further
+   off - less crack, more echo. */
+const shots = {};
+/* one of three made-once shots, a touch faster or slower each time */
+function shot(far, pos, gain, rate, t){
+  const k = far ? 'far' : 'near';
+  const set = shots[k] || (shots[k] = [0, 1, 2].map(i => gunshot(far, i)));
+  const src = AC.createBufferSource();
+  src.buffer = set[Math.floor(Math.random() * set.length)];
+  src.playbackRate.value = (0.94 + Math.random() * 0.12) * (rate || 1);
+  src.connect(out(pos, gain));
+  src.start(t);
+}
+function gunshot(far, seed){
+  const SR = AC.sampleRate, n = Math.floor(SR * 1.5);
+  const buf = AC.createBuffer(2, n, SR);
+  let r = (seed + 1) * 9301 + (far ? 49297 : 0);
+  const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280) * 2 - 1;
+  // the dry shot, mono
+  const dry = new Float32Array(Math.floor(SR * 0.35));
+  let hp = 0, lpA = 0, lpB = 0, prev = 0, ph = 0;
+  const crackK = far ? 0.25 : 1, lpBlast = far ? 0.08 : 0.2;
+  for(let i = 0; i < dry.length; i++){
+    const t = i / SR, w = rnd();
+    hp = 0.6 * (hp + w - prev); prev = w;                   // bright: one-pole high pass
+    lpA += lpBlast * (w - lpA);                              // the body of the blast
+    lpB += 0.045 * (w - lpB);                                // the thud under it (high enough for a phone's speaker)
+    const f = 95 + 160 * Math.exp(-t / 0.03);
+    ph += 2 * Math.PI * f / SR;
+    const atk = Math.min(1, t / 0.0008);
+    let x = 0;
+    x += (t < 0.0012 ? rnd() * 1.2 : 0) * crackK;                  // the edge
+    x += hp * Math.exp(-t / 0.011) * 1.1 * crackK;                  // the crack
+    x += lpA * Math.exp(-t / 0.022) * 3.2 * atk;                    // the blast
+    x += lpB * Math.exp(-t / 0.04) * 6 * atk;                       // the thud
+    x += Math.sin(ph) * Math.exp(-t / 0.045) * 0.7 * atk;           // the boom
+    dry[i] = x;
+  }
+  // echoes off the walls, each duller than the last
+  const echoes = far ? [[0.09, 0.2], [0.2, 0.13], [0.37, 0.08], [0.6, 0.04]] : [[0.12, 0.11], [0.26, 0.07], [0.45, 0.04], [0.7, 0.02]];
+  for(let c = 0; c < 2; c++){
+    const out = buf.getChannelData(c);
+    for(let i = 0; i < dry.length; i++) out[i] += dry[i] * (far ? 0.55 : 1);
+    echoes.forEach(([d, g], k) => {
+      const start = Math.floor((d + (c ? 0.007 : 0) + rnd() * 0.004) * SR);
+      let lp = 0;
+      const a = 0.25 / (k + 1);
+      for(let i = 0; i < dry.length && start + i < n; i++){ lp += a * (dry[i] - lp); out[start + i] += lp * g; }
+    });
+    // the rumble that is left
+    let lp = 0;
+    for(let i = Math.floor(0.02 * SR); i < n; i++){
+      const t = i / SR;
+      lp += 0.03 * (rnd() - lp);
+      out[i] += lp * Math.exp(-t / (far ? 0.4 : 0.28)) * Math.min(1, (t - 0.02) / 0.05) * (far ? 0.45 : 0.25);
+    }
+    // loud, not spiky; then to a sensible peak
+    let peak = 0;
+    for(let i = 0; i < n; i++){ out[i] = Math.tanh(out[i] * 1.1); peak = Math.max(peak, Math.abs(out[i])); }
+    for(let i = 0; i < n; i++) out[i] *= 0.95 / (peak || 1);
+  }
+  return buf;
+}
+
 /* key, optional position {x,y,z} relative to the listener, optional volume */
 export function sfx(key, pos, vol, pitch){
   if(!soundOn()) return;
   const t = AC.currentTime, v = vol == null ? 1 : vol, pk = pitch || 1;
   switch(key){
     case 'pistol': {
-      const d = out(pos, 0.5 * v);
-      noise(t, 0.12, d, 'bandpass', 2400, 600, 0.8);
-      tone(t, 'square', 320, 70, 0.08, d, 0.6);
+      // the Bunker's pistol: the revolver's shot (gunshot below), smaller and sharper
+      shot(false, pos, 0.6 * v, 1.18 * pk, t);
       break;
     }
     case 'shotgun': {
+      // a deeper, heavier shot, then the pump
       const d = out(pos, 0.8 * v);
-      noise(t, 0.45, d, 'lowpass', 3000, 200, 0.7);
-      tone(t, 'sine', 110, 40, 0.3, d, 1);
+      shot(false, pos, 1.0 * v, 0.72 * pk, t);
+      shot(true, pos, 0.5 * v, 0.8 * pk, t + 0.004);
       // the pump
       noise(t + 0.38, 0.05, d, 'highpass', 2500, 0, 2);
       noise(t + 0.5, 0.05, d, 'highpass', 1800, 0, 2);
@@ -221,19 +293,12 @@ export function sfx(key, pos, vol, pitch){
       break;
     }
     /* ---------- the wagon ---------- */
-    case 'revolver': {
-      // a sharp crack with a body to it, and the canyon throwing it back
-      const d = out(pos, 0.6 * v);
-      noise(t, 0.09, d, 'highpass', 1800, 0, 0.7);
-      noise(t, 0.35, d, 'bandpass', 1400, 300, 0.9);
-      tone(t, 'triangle', 180, 55, 0.14, d, 0.8);
-      noise(t + 0.18, 0.4, d, 'bandpass', 900, 300, 1.2);
-      break;
-    }
+    case 'revolver':
     case 'enemyGun': {
-      const d = out(pos, 0.45 * v);
-      noise(t, 0.3, d, 'bandpass', 1100, 250, 1);
-      tone(t, 'triangle', 140, 50, 0.12, d, 0.5);
+      // a recorded-sounding shot, made once (gunshot below); an outlaw's is
+      // further off: duller, and more canyon than crack
+      const far = key === 'enemyGun';
+      shot(far, pos, (far ? 0.75 : 0.9) * v, pk, t);
       break;
     }
     case 'ricochet': {
