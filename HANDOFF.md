@@ -23,7 +23,7 @@ Fire-Stick-bound), a full working game. Working title.
 | `web/space/`, `web/bunker/` | Each game's own link. A phone goes to `play.html?game=…`, a big screen to `tv.html?game=…` (`?tv=1` makes a phone or tablet the TV). |
 | `web/party.html`, `web/gameday/` | The Game Day party printout: one QR code to `/gameday/?party=NAME`, which opens the Game Day Bunker in a fixed room with no codes and no markers. See "The party link" below. |
 | `web/wsim.js`, `web/trail.js`, `web/wagon-phone.js`, `web/wagon-tv.js`, `web/wagon/` | The Wagon (cowboy game): its simulation, its renderer, its phone controls and TV view, its link. See "The Wagon" below. |
-| `web/models/`, `web/models.js`, `web/lib/loaders/`, `web/lib/utils/` | Quaternius's CC0 low-poly models (GLB) and the loader. The Wagon's horses, revolver, cacti, rocks, dead trees, bones, crates and barrels. `ASSETS.md` lists every free pack the owner has in Google Drive and how to get the files. |
+| `web/models/models.glb`, `models-src/`, `tools/bundle-models.mjs`, `web/models.js`, `web/cowboys.js`, `web/lib/loaders/`, `web/lib/utils/` | Quaternius's CC0 low-poly models, bundled into one file, and the loader; the cowboys. The Wagon's horses, revolver, cacti, rocks, dead trees, bones, crates and barrels. `ASSETS.md` lists every free pack the owner has in Google Drive and how to get the files. |
 | `web/tv.html` | The TV. Hosts the room (or, with `?watch=CODE`, watches a phone's game), draws the battle, plays the music. `?game=` fixes the game. |
 | `web/play.html` | The phone. Joins a room, or hosts one itself ("START A GAME ON THIS PHONE"). `?game=` fixes the game. |
 | `web/markers/` | Printed markers, an option in both games: `kit.js` (the phone side), `markers.js` (find them), `room.js` (the survey, the boundary, finding yourself), `print.html`, `simcam.js` (a pretend camera for the checks). See "Printed markers" below. |
@@ -571,21 +571,35 @@ and from the TV, the outlaws lined up and the Baron in
 page, no host).
 
 **Real models** (2026-11-19, from the owner's free-asset packs - see
-`ASSETS.md`): `web/models/*.glb`, Quaternius, CC0, ~2 MB in all, loaded in
-the background by `models.js` (one load per file, `SkeletonUtils` clones for
-animated ones). `trail.js` draws its own stand-ins first and swaps the real
-ones in when they arrive (`useModels`), so nothing waits on them and a
-missing file just looks plainer. Used: the four horses of the team and the
-riders' horses (animated: Gallop / Walk / Idle by the wagon's speed; they
-face +z in the file, so turned round), the revolver in your hand and in
-everybody else's, cacti, rocks (tinted red sandstone; the bandits' cover
-rocks are stretched to 2.1 x 1.45 m so a man fits behind), sage bushes,
-dead trees and stumps (flats, gulch, pass), bones and skulls in the gulch,
-the crates and barrels of the cargo, the supply crate. Still home-made:
-the outlaws, partners, vultures, bats, the balloon (no animated cowboy
-reached us - see ASSETS.md). `tools/modelgallery.html?m=Horse:1.7&rot=3.14`
-shows any of them with an arrow along -z, for checking which way a new one
-faces.
+`ASSETS.md`; all Quaternius, CC0). **One file**: `web/models/models.glb`
+(~3.3 MB), built by `node tools/bundle-models.mjs` from the sources in
+`models-src/` (not uploaded): each source file becomes a scene named after
+it, its animations become `<Model>|<Clip>`. One request for the lot (static
+files cost nothing on Cloudflare either way; the bundle is for phones on
+slow data). `models.js` loads it in the background and hands out clones
+(`SkeletonUtils` for animated ones); `trail.js` draws its own stand-ins
+first and swaps the real ones in, so nothing waits and a missing file just
+looks plainer. **Add a model**: put its .glb/.gltf in `models-src/`, run
+the script, use it by file name.
+
+In the Wagon: the team's and the riders' horses (Gallop / Walk / Idle by
+the wagon's speed; models face +z in the file, so turned round), the
+revolvers, cacti, sandstone-tinted rocks (cover rocks stretched to 2.1 x
+1.45 m), sage, dead trees, bones and skulls, crates and barrels - and
+**the people**: every outlaw, rider, mine-cart bandit and rope bandit, and
+every player on the wagon, is a Quaternius cowboy (`web/cowboys.js`:
+Cowboy_Hair, given a hat, and Cowboy_Female). Each is dressed from palettes
+(jacket, shirt, bandana, hat, trousers, hair, skin - the file's own skin
+is near black), seeded by id so a gang never looks like clones; a player's
+jacket is their colour. Animations: Idle, Punch (a brawl aboard, a
+dynamite throw), Jump (the rope swing), SitDown held at its last frame
+(riders, carts, players). Poses no clip has are bone overrides after the
+mixer: the gun arm forward (`UpperArmR` x 1.45, less the aim's pitch),
+both hands up on the rope (`UpperArmL/R` y +-2.9). Bone names come back
+from the bundle with a number on the end (UpperArmL1): `cowboys.js` strips
+it. Still home-made: vultures, bats, the balloon. `tools/cowboys.html?p=
+SitDown|once|UpperArmR:1.4:0:0,...` shows poses side by side;
+`tools/modelgallery.html?m=Horse:1.7&rot=3.14` any model, with -z marked.
 
 **Nothing hanging by the neck** (asked 2026-11-19): swinging in on ropes is
 fun and stays, but no gallows, no noose, no imagery of anybody hanging by

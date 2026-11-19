@@ -26,6 +26,7 @@ node netcheck.mjs    # the TV and phones in Chromium over ?local=1: space, a pho
 node markcheck.mjs   # printed markers with a pretend camera: Bunker walking a drawn boundary, Space facing the same way
 node partycheck.mjs  # the Game Day party link: first in hosts, the rest join, a TV hosts or watches
 node hauntcheck.mjs  # the shelved Haunted House (and the print page) with a pretend camera
+node tools/bundle-models.mjs   # rebuild web/models/models.glb after adding a model to models-src/
 node tools/art.mjs   # redraw the icons and link preview after changing how ships or the sky look
 python3 tools/samples.py && python3 tools/music.py   # re-render web/music/ after changing a piece
 ```

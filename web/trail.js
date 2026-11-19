@@ -25,6 +25,15 @@ import {OutputPass} from './lib/postprocessing/OutputPass.js';
 import {Particles, Beam, glowTex, canvasTex, textSprite, hot} from './world.js';
 import {ENEMIES, ENEMY_LIST, STATES, STAGES, SPEED, EYE, BED, WAGON, COLORS, GUN, centre} from './wsim.js';
 import * as M from './models.js';
+import {makeCowboy, holdInHand} from './cowboys.js';
+
+/* Poses for the cowboys (cowboys.js): bone rotations set after the mixer.
+   Both hands up on a rope - held in the hands, above the head, never
+   anything else (HANDOFF.md, "Nothing hanging by the neck"). */
+const ARMS_UP = {UpperArmL: [0, 2.9, 0], UpperArmR: [0, -2.9, 0], LowerArmL: [0, 0, 0], LowerArmR: [0, 0, 0]};
+const AIM = pitch => ({UpperArmR: [1.45 - (pitch || 0), 0, 0], LowerArmR: [0, 0, 0]});
+const SEAT = 0.55;       // a seated cowboy's seat, above his feet
+const COWBOY_H = 1.75;
 
 /* Quaternius's CC0 models (web/models/, ASSETS.md), once loaded: name ->
    loaded model. Until then (or if one fails) everything is drawn the
@@ -469,7 +478,8 @@ function buildPartner(color, name, ghost){
   const coat = new THREE.MeshStandardMaterial({color: c.clone().multiplyScalar(0.75), roughness: 0.7, emissive: c, emissiveIntensity: 0.1});
   part(g, new THREE.CylinderGeometry(0.2, 0.24, 0.62, 10), coat, 0, 0.36, 0);
   // what they sit on: a sack of flour on the wagon bed
-  part(g, new THREE.CylinderGeometry(0.24, 0.27, 0.44, 10), mat(0xb8a078, 1), 0, -0.25, 0.05).scale.z = 0.8;
+  const sack = g.userData.sack = part(g, new THREE.CylinderGeometry(0.24, 0.27, 0.44, 10), mat(0xb8a078, 1), 0, -0.25, 0.05);
+  sack.scale.z = 0.8;
   for(const s of [-1, 1]) part(g, new THREE.CylinderGeometry(0.07, 0.07, 0.5, 8), mat(0x3a4a6a), s * 0.1, 0.05, -0.25, Math.PI / 2);
   const head = part(g, new THREE.SphereGeometry(0.14, 14, 10), mat(0xd8b090, 0.7), 0, 0.78, 0);
   const hat = buildHat(c.clone().multiplyScalar(0.55).getHex(), true);
@@ -480,6 +490,7 @@ function buildPartner(color, name, ghost){
   g.userData.arm = arm;
   const tag = textSprite(name, COLORS[color], 0.14);
   tag.material.opacity = 0.75; tag.position.y = 1.25; g.add(tag);
+  g.userData.tag = tag; g.userData.color = color;
   // on a phone, the person beside you is right beside you: see through them
   if(ghost) g.traverse(o => { if(o.isMesh){ o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.35; o.material.depthWrite = false; } });
   return g;
@@ -1003,6 +1014,7 @@ export class Trail {
         e = {id, type, mesh, d: p.clone(), sp: p.clone(), sv: new THREE.Vector3(), at: now, face: m[i + 5] / 100, hp: 1, st: 'ride', aux: 0, flash: 0, ph: Math.random() * 10, rise: 0};
         if(type === 'swinger') e.anchor = null;
         this.foes.set(id, e);
+        if(type === 'bandit' || type === 'thrower' || type === 'rider' || type === 'cart' || type === 'swinger') this.dressFoe(e);
       } else {
         // velocity from the last two snapshots: dynamite and diving birds move in 3D
         const dt = (now - e.at) / 1000;
@@ -1026,6 +1038,7 @@ export class Trail {
         this.scene.add(mesh);
         a = {mesh, x: p.x, z: p.z, aim: new THREE.Vector3(0, 0, -1)};
         this.partners.set(p.c, a);
+        this.dressPartner(a, p.c);
       }
       a.xT = p.x; a.zT = p.z; a.aimT = p.a; a.f = p.f;
     }
@@ -1135,7 +1148,8 @@ export class Trail {
     if(e) this.flyHat(e, p, 1);
   }
   flyHat(e, p, big){
-    const h = buildHat(0x2a2018, true);
+    const h = buildHat((e.mesh.userData && e.mesh.userData.hatColor) || 0x2a2018, true);
+    if(e.mesh.userData.cb && e.mesh.userData.cb.userData.hat) e.mesh.userData.cb.userData.hat.visible = false;
     h.scale.setScalar(big * (this.tv ? 1.3 : 1));
     h.position.copy(p).add(_v1.set(0, 0.5, 0));
     this.scene.add(h);
@@ -1298,8 +1312,11 @@ export class Trail {
         _v1.set(a.aimT[0], a.aimT[1], a.aimT[2]);
         a.aim.lerp(_v1, ease).normalize();
         a.mesh.rotation.y = Math.atan2(-a.aim.x, -a.aim.z);
-        a.mesh.userData.arm.rotation.x = Math.asin(Math.max(-1, Math.min(1, a.aim.y)));
+        const pitch = Math.asin(Math.max(-1, Math.min(1, a.aim.y)));
+        a.mesh.userData.arm.rotation.x = pitch;
+        if(a.cb){ a.cb.userData.pose('SitDown', true); a.cb.userData.override(AIM(pitch)); }
       }
+      if(a.cb) a.cb.userData.update(dt);
     }
     // the gun
     if(this.gun){
@@ -1341,8 +1358,67 @@ export class Trail {
     if(this.composer) this.composer.render(); else this.renderer.render(this.scene, this.cam);
   }
 
+  /* The real cowboys, once the bundle is in: each outlaw is dressed as one
+     (the home-made figure is kept, hidden, as the fallback). */
+  dressFoe(e){
+    const U = e.mesh.userData;
+    if(!U.man) return;
+    makeCowboy({seed: e.id * 13 + 5, height: COWBOY_H}).then(c => {
+      if(!c || !this.foes.has(e.id)) return;
+      const man = U.man;
+      man.visible = false;
+      c.position.copy(man.position);
+      if(e.type === 'rider') c.position.y = (U.mount.userData.mixer ? HORSE_BACK : 1.35) - SEAT;
+      if(e.type === 'cart') c.position.y = 1.15 - SEAT;
+      man.parent.add(c);
+      U.cb = c;
+      U.hatColor = c.userData.hatColor;
+      U.flash = c.userData.flash.concat(U.mount ? U.mount.userData.flash || [] : []);
+      if(e.type !== 'thrower'){ const gun = buildRevolver(1.1); gun.rotation.set(Math.PI / 2, 0, 0); holdInHand(c, gun, new THREE.Vector3(0, 0.05, 0)); }
+      else {
+        const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.24, 8), mat(0xc02018, 0.6));
+        holdInHand(c, stick, new THREE.Vector3(0, 0.1, 0));
+      }
+      // the glint of an aimed gun and the fuse follow the hand (handPos)
+      for(const k of ['glint', 'fuse']) if(U[k]){ U[k].parent && U[k].parent.remove(U[k]); e.mesh.add(U[k]); }
+    });
+  }
+  dressPartner(a, color){
+    const P = a.mesh.userData;
+    makeCowboy({seed: color * 31 + 7, height: COWBOY_H, jacket: new THREE.Color(COLORS[color] || '#fff').getHex()}).then(c => {
+      if(!c || !this.partners.has(color) || this.partners.get(color) !== a) return;
+      for(const ch of a.mesh.children) if(ch !== P.tag && ch !== P.sack) ch.visible = false;
+      c.position.y = -SEAT + 0.02;
+      if(!this.tv) M.materials(c).forEach(mt => { mt.transparent = true; mt.opacity = 0.35; mt.depthWrite = false; });
+      const gun = buildRevolver(1.1); gun.rotation.set(Math.PI / 2, 0, 0); holdInHand(c, gun, new THREE.Vector3(0, 0.05, 0));
+      a.mesh.add(c);
+      a.cb = c;
+    });
+  }
+  cowboyPose(e, U, dt){
+    const C = U.cb.userData;
+    if(e.type === 'bandit' || e.type === 'thrower'){
+      if(e.type === 'thrower') C.pose(e.st === 'up' ? 'Punch' : 'Idle');
+      else { C.pose('Idle'); C.override(e.st === 'up' ? AIM(0.1) : null); }
+    } else if(e.type === 'rider' || e.type === 'cart'){
+      if(e.st === 'aboard'){ C.pose('Punch'); C.override(null); U.cb.position.y = 0; }
+      else { C.pose('SitDown', true); C.override(e.st === 'aim' ? AIM(0) : null); }
+    } else if(e.type === 'swinger'){
+      if(e.st === 'aboard'){ C.pose('Punch'); C.override(null); }
+      else { C.pose(e.st === 'swing' ? 'Jump' : 'Idle'); C.override(ARMS_UP); }
+    }
+    C.update(dt);
+    if(C.hand && (U.glint || U.fuse)){
+      C.hand.getWorldPosition(_v1);
+      e.mesh.worldToLocal(_v1);
+      if(U.glint) U.glint.position.copy(_v1);
+      if(U.fuse) U.fuse.position.copy(_v1).add(_v2.set(0, 0.2, 0));
+    }
+  }
+
   animate(e, dt, t){
     const U = e.mesh.userData;
+    if(U.cb) this.cowboyPose(e, U, dt);
     switch(e.type){
       case 'bandit': case 'thrower': {
         // up off the ground with no canyon rim to stand on (the gorge's
@@ -1353,7 +1429,8 @@ export class Trail {
         }
         const up = e.st === 'up' ? 1 : 0;
         e.rise += (up - e.rise) * Math.min(1, dt * 9);
-        U.lift.position.y = -1.5 + e.rise * 1.5;
+        // (a cowboy is shorter, and has to stand up higher to shoot over it)
+        U.lift.position.y = U.cb ? -1.9 + e.rise * 2.45 : -1.5 + e.rise * 1.5;
         // the rock looks at the wagon so he is behind it
         U.lift.position.z = 0.55;
         U.arms[1].rotation.x = e.type === 'thrower' ? -2.5 + e.aux * 2.5 * up : -1.5 * e.rise;

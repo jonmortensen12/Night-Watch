@@ -55,10 +55,11 @@ Ninja_Male_Hair, Ninja_Sand, Ninja_Sand_Female, OldClassy_Female/_Male,
 Pirate_Female/_Male, Pug, Soldier_Female/_Male, Suit_Female/_Male,
 Viking_Female/_Male, VikingHelmet, Witch, Wizard, Worker_Female/_Male,
 Zombie_Female/_Male.
-**Not in the mirror** (and Drive is quota-blocked): the cowboys are the one
-thing here worth fetching by hand - download `glTF/Cowboy_*.gltf` in a
-browser (signed in, a copy into your own Drive first may get round the
-quota) and put them in the repo.
+**Not in the mirror** (and Drive is quota-blocked). The owner downloaded
+Cowboy_Female, Cowboy_Hair and Doctor_Male_Young by hand: they are in the
+GitHub repo `jonmortensen12/FreeAssets` (`quaternius/<pack>/glTF/`), which is
+meant to become the home of all of these. *Used in the Wagon: every
+outlaw and player (Cowboy_Hair, Cowboy_Female), recoloured.*
 
 ### Animated Men Characters (Feb 2019) - `17LibivOaUidsQhSkcxP3YYvDr0n7wIwu`
 OBJ/FBX/Blends. Male_Casual, Male_LongSleeve, Male_Shirt, Male_Suit, and
@@ -109,7 +110,7 @@ CactusFlowers, Rock_1-7 (+Moss/Snow), Bush, CommonTree/Birch/Pine/Willow
 ## Useful for which game
 
 - **Wagon (cowboy):** horses (Animated Animals), cowboys (Character Pack -
-  needs a manual download), revolvers (Gun Pack / survival mirror),
+  in the FreeAssets repo), revolvers (Gun Pack / survival mirror),
   cacti/rocks/dead trees (Nature), vulture: none (still drawn in code).
 - **Bunker (Halloween):** Zombie_Male/Female, Witch, Goblin (Character Pack);
   DeadTree (Stylized Nature); Wolf (Animals).

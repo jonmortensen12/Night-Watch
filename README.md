@@ -43,7 +43,7 @@ bunker's corners on your floor with the phone, and walk to a wall to fix it.
 See `HANDOFF.md` for how it works and `CLAUDE.md` for the checks to run
 before shipping.
 
-3D models in the Wagon (horses, revolver, cacti, rocks, trees, crates) are by
+3D models in the Wagon (cowboys, horses, revolver, cacti, rocks, trees, crates) are by
 Quaternius (quaternius.com), CC0.
 
 Music and cues are rendered from the FluidR3 GM soundfont by Frank Wen

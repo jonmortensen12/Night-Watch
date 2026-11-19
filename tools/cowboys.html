@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>cowboys</title>
+<style>html, body { margin: 0; background: #d8c8a8; } canvas { display: block; width: 100vw; height: 100vh; }</style>
+<canvas id="c"></canvas>
+<script type="importmap">{"imports": {"three": "/web/lib/three.module.min.js"}}</script>
+<script type="module">
+/* Cowboys in poses, for checking web/cowboys.js by eye.
+   ?p=Clip|once|bone:x:y:z;bone:x:y:z , ...   one figure per comma */
+import * as THREE from 'three';
+import {makeCowboy} from '/web/cowboys.js';
+const q = new URLSearchParams(location.search);
+const r = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
+r.setSize(innerWidth, innerHeight); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xd8c8a8);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x886644, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(3, 8, 10); scene.add(sun);
+const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
+const specs = (q.get('p') || 'Idle,Shoot_OneHanded,SitDown|once,Punch,Run').split(',');
+cam.position.set(0, 1.4, specs.length * 1.4 + 3); cam.lookAt(0, 1, 0);
+const figs = [];
+let x = -(specs.length - 1) * 0.6;
+for(const [i, sp] of specs.entries()){
+  const [clip, once, ov] = sp.split('|');
+  const g = await makeCowboy({seed: i * 7 + 3, model: q.get('m') || (i % 2 ? 'Cowboy_Female' : 'Cowboy_Hair')});
+  if(!g) continue;
+  g.rotation.y = +(q.get('turn') || Math.PI);
+  g.position.x = x; x += 1.2;
+  g.userData.pose(clip, once === 'once');
+  if(ov) g.userData.override(Object.fromEntries(ov.split(';').map(t => { const [b, ...v] = t.split(':'); return [b, v.map(Number)]; })));
+  scene.add(g); figs.push(g);
+}
+window.BONES = figs[0] && Object.keys(figs[0].userData.bones);
+const clock = new THREE.Clock();
+(function f(){ requestAnimationFrame(f); const dt = Math.min(0.05, clock.getDelta()); figs.forEach(g => g.userData.update(dt)); r.render(scene, cam); })();
+window.ready = true;
+</script>

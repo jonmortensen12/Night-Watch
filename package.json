@@ -2,5 +2,9 @@
   "name": "night-watch",
   "private": true,
   "type": "module",
-  "description": "Checks only. The game itself is web/, served as plain files."
+  "description": "Checks only. The game itself is web/, served as plain files.",
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1"
+  }
 }

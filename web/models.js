@@ -1,8 +1,10 @@
 /* Night Watch - models made by somebody who can model.
 
-   Quaternius's free (CC0) low-poly packs, as GLB files in web/models/ (see
-   ASSETS.md for where they come from and what else there is). Each file is
-   loaded once; every use is a clone. A skinned, animated model (the horses)
+   Quaternius's free (CC0) low-poly packs (ASSETS.md says where they come
+   from and what else there is), all in ONE file, web/models/models.glb, made
+   by tools/bundle-models.mjs from models-src/ - one request for the lot.
+   Each model is a scene in it named after its source file; every use is a
+   clone. A skinned, animated model (the horses)
    is cloned with SkeletonUtils so each copy has its own skeleton and its own
    AnimationMixer.
 
@@ -13,19 +15,29 @@ import * as THREE from 'three';
 import {GLTFLoader} from './lib/loaders/GLTFLoader.js';
 import {clone as skinClone} from './lib/utils/SkeletonUtils.js';
 
-const DIR = new URL('models/', import.meta.url).href;
+const BUNDLE = new URL('models/models.glb', import.meta.url).href;
 const loader = new GLTFLoader();
-const cache = new Map();      // name -> Promise<{scene, animations, size}>
+let bundle = null;            // Promise<gltf | null>: every model in one file (tools/bundle-models.mjs)
+const cache = new Map();      // name -> Promise<{scene, animations, size, box} | null>
 
+function loadBundle(){
+  if(!bundle) bundle = new Promise(res => loader.load(BUNDLE, res, undefined, () => res(null)));
+  return bundle;
+}
+
+/* One model from the bundle, by the name of the file it came from. */
 export function load(name){
   if(!cache.has(name)){
-    cache.set(name, new Promise(res => {
-      loader.load(DIR + name + '.glb', g => {
-        const box = new THREE.Box3().setFromObject(g.scene);
-        const size = box.getSize(new THREE.Vector3());
-        g.scene.traverse(o => { if(o.isMesh){ o.frustumCulled = !o.isSkinnedMesh; } });
-        res({scene: g.scene, animations: g.animations, size, box});
-      }, undefined, () => res(null));
+    cache.set(name, loadBundle().then(g => {
+      const scene = g && g.scenes.find(s => s.name === name);
+      if(!scene) return null;
+      const animations = g.animations.filter(a => a.name.startsWith(name + '|')).map(a => {
+        const c = a.clone(); c.name = a.name.slice(name.length + 1); return c;
+      });
+      const box = new THREE.Box3().setFromObject(scene);
+      const size = box.getSize(new THREE.Vector3());
+      scene.traverse(o => { if(o.isMesh) o.frustumCulled = !o.isSkinnedMesh; });
+      return {scene, animations, size, box};
     }));
   }
   return cache.get(name);
