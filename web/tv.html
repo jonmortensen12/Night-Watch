@@ -129,6 +129,12 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
     <li>Pistol, shotgun or <b>sniper</b> (zoom!). Hold a finger on the right to fire.</li>
     <li>Stand at a damaged wall and <b>hold REPAIR</b>. If one gets in, you lose.</li>
   </ol>
+  <ol id="howWagon" style="display:none">
+    <li><b>Sit in a line</b> on the floor, side by side, all facing this TV: that is the wagon's bench.</li>
+    <li><b>Scan</b> the code; <b>point at this TV</b> and tap LOCK FRONT. In the lobby, <b>tap your seat</b> - 1 is the left end.</li>
+    <li><b>Turn to aim, tap to shoot.</b> Six shots, then <b>flick the phone</b> to reload.</li>
+    <li>Shoot the <b>dynamite</b> out of the air, and anybody who gets <b>on the wagon</b>.</li>
+  </ol>
   <div id="lookPick"><span>Look:</span>
     <button data-look="halloween">🎃 HALLOWEEN</button>
     <button data-look="gameday">🏈 GAME DAY</button>
@@ -136,6 +142,7 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
   <div id="modePick"><span>Game:</span>
     <button data-mode="space">🚀 SPACE</button>
     <button data-mode="zombie">🎃 BUNKER</button>
+    <button data-mode="wagon">🤠 WAGON</button>
     <span>(or on any phone)</span>
   </div>
   <div class="crew" id="crew"></div>
@@ -174,13 +181,15 @@ import {createHost, PROTO} from './host.js';
 import {COLORS, awards, TYPES} from './sim.js';
 import * as SND from './sound.js';
 import {createZombieTV} from './zombie-tv.js';
+import {createWagonTV} from './wagon-tv.js';
+import {awards as wAwards, STAGES as W_STAGES, ENEMIES as W_ENEMIES} from './wsim.js';
 import {NAMES as GD_NAMES} from './gameday.js';
 import {awards as zAwards, SECTIONS, MONSTERS} from './zsim.js';
 
 const $ = id => document.getElementById(id);
 const isLocal = NWNet.isLocal();
 const params = new URLSearchParams(location.search);
-const GAME = ['space', 'zombie'].indexOf(new URLSearchParams(location.search).get('game')) >= 0 ? new URLSearchParams(location.search).get('game') : null;
+const GAME = ['space', 'zombie', 'wagon'].indexOf(new URLSearchParams(location.search).get('game')) >= 0 ? new URLSearchParams(location.search).get('game') : null;
 /* A party link (party.html): one fixed room, the Game Day Bunker, no
    markers. The TV runs it if it gets there first, and watches the phone
    that is running it otherwise. */
@@ -272,7 +281,7 @@ function drawRoom(){
   const ways = room.people.filter(p => p.role === 'player' && NET_LABEL[p.net]);
   $('netKey').textContent = ways.length ? (ways.every(p => p.net === 'wifi') ? 'Every phone is on this Wi-Fi.' :
     ways.some(p => p.net === 'relay') ? 'Some phones are going through the Cloudflare relay.' : 'Some phones are reaching this TV over the internet, not this Wi-Fi.') : '';
-  switchMode(room.mode === 'zombie' ? 'zombie' : 'space');
+  switchMode(room.mode === 'zombie' || room.mode === 'wagon' ? room.mode : 'space');
   [...$('modePick').querySelectorAll('button')].forEach(b => b.classList.toggle('sel', b.dataset.mode === (room.mode || 'space')));
   $('lookPick').style.display = (room.mode || 'space') === 'zombie' && !PARTY ? '' : 'none';
   [...$('lookPick').querySelectorAll('button')].forEach(b => b.classList.toggle('sel', b.dataset.look === (room.look || 'halloween')));
@@ -295,7 +304,7 @@ function drawQr(cv, text){
 }
 
 /* ---------- which game ---------- */
-let mode = 'space', ztv = null;
+let mode = 'space', ztv = null, wtv = null;
 /* The bunker drawn round a room with markers ("Walk the room"), or null. */
 function setFence(L){
   fenceL = L;
@@ -305,27 +314,44 @@ function setFence(L){
 function switchMode(m){
   if(m === mode) return;
   mode = m;
-  $('view').style.display = $('hud').style.display = m === 'zombie' ? 'none' : '';
-  $('hullLbl').style.display = $('hullWrap').style.display = m === 'zombie' ? 'none' : '';
-  if(m === 'zombie'){
-    if(!ztv){
-      ztv = createZombieTV({SND, banner, call, players: () => S && S.pl, onEvent: sharedEvent});
+  const own = m === 'zombie' || m === 'wagon';
+  $('view').style.display = $('hud').style.display = own ? 'none' : '';
+  $('hullLbl').style.display = $('hullWrap').style.display = own ? 'none' : '';
+  if(m === 'wagon'){
+    if(!wtv) wtv = createWagonTV({SND, banner, call, players: () => S && S.pl, onEvent: sharedEvent});
+    wtv.setActive(true);
+    if(!zhud){
       zhud = document.createElement('canvas');
       zhud.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none';
       document.body.insertBefore(zhud, $('top'));
     }
+  } else if(wtv) wtv.setActive(false);
+  if(m === 'zombie'){
+    if(!ztv){
+      ztv = createZombieTV({SND, banner, call, players: () => S && S.pl, onEvent: sharedEvent});
+      if(!zhud){
+        zhud = document.createElement('canvas');
+        zhud.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none';
+        document.body.insertBefore(zhud, $('top'));
+      }
+    }
     ztv.setActive(true); zhud.style.display = '';
     fenceShown = 'none'; setFence(fenceL);
-  } else if(ztv){ ztv.setActive(false); zhud.style.display = 'none'; }
-  $('howSpace').style.display = m === 'zombie' ? 'none' : '';
+  } else if(ztv) ztv.setActive(false);
+  if(zhud) zhud.style.display = own ? '' : 'none';
+  $('howSpace').style.display = own ? 'none' : '';
   $('howZombie').style.display = m === 'zombie' ? '' : 'none';
-  $('tagline').textContent = m === 'zombie' ? 'The bunker. Monsters on every side. Hold the walls.' : 'Your phone is a window into space. They are all around you.';
+  $('howWagon').style.display = m === 'wagon' ? '' : 'none';
+  $('tagline').textContent = m === 'zombie' ? 'The bunker. Monsters on every side. Hold the walls.' : m === 'wagon' ? 'A wagon full of gold, a canyon full of outlaws. Get it through.' : 'Your phone is a window into space. They are all around you.';
 }
 let zhud = null;
 function sharedEvent(ev){
   const k = ev[0], z = mode === 'zombie';
   const gd = z && ztv && ztv.yard.look === 'gameday';
-  if(k === 'wave'){ SND.cue(gd ? 'gwave' : z ? 'zwave' : 'wave'); banner('WAVE ' + ev[1], ev[2] ? (z ? (ztv && ztv.yard.look === 'gameday' ? 'Swoop is coming' : 'The witch is coming') : 'Dreadnought inbound') : ''); }
+  if(k === 'wave' && mode === 'wagon'){ const st = W_STAGES[ev[3]] || W_STAGES[0]; SND.cue('wwave'); banner(st.name.toUpperCase(), st.blurb); }
+  else if(k === 'clear' && mode === 'wagon') SND.cue('wclear');
+  else if(k === 'over' && mode === 'wagon') SND.cue(S && S.nr ? 'record' : 'wover');
+  else if(k === 'wave'){ SND.cue(gd ? 'gwave' : z ? 'zwave' : 'wave'); banner('WAVE ' + ev[1], ev[2] ? (z ? (ztv && ztv.yard.look === 'gameday' ? 'Swoop is coming' : 'The witch is coming') : 'Dreadnought inbound') : ''); }
   else if(k === 'clear'){ if(gd) SND.cue('fightsong') || SND.cue('gclear'); else SND.cue(z ? 'zclear' : 'clear'); }
   else if(k === 'over') SND.cue(S && S.nr ? 'record' : gd ? 'gover' : z ? 'zover' : 'gameover');
   else if(k === 'count') SND.cue('count');
@@ -336,21 +362,22 @@ let phase = 'lobby', bannerT = 0;
 function onSnap(s){
   const was = phase;
   S = s;
-  switchMode(s.mode === 'zombie' ? 'zombie' : 'space');
+  switchMode(s.mode === 'zombie' || s.mode === 'wagon' ? s.mode : 'space');
   if(s.ro && watching){ room = s.ro; setFence(room.mk && room.mk.fence ? watchedLayout : null); }
   if(ztv && room && room.look && ztv.yard.look !== room.look) ztv.setLook(room.look);
-  if(mode === 'zombie') ztv.onSnap(s); else world.feed(s);
+  if(mode === 'zombie') ztv.onSnap(s); else if(mode === 'wagon') wtv.onSnap(s); else world.feed(s);
   phase = s.ph;
   $('lobby').classList.toggle('off', phase !== 'lobby' || watching);
   $('board').classList.toggle('off', phase === 'lobby');
   $('top').style.visibility = phase === 'lobby' ? 'hidden' : '';
   $('over').classList.toggle('off', phase !== 'over');
-  $('wave').textContent = phase === 'lobby' ? '' : s.w ? 'WAVE ' + s.w : 'GET READY';
+  $('wave').textContent = phase === 'lobby' ? '' : s.w ? (mode === 'wagon' ? 'STAGE ' : 'WAVE ') + s.w : 'GET READY';
   if(mode === 'space'){
     $('hullBar').style.width = Math.max(0, s.hull) + '%';
     $('hullBar').classList.toggle('low', s.hull < 35);
   }
   if(phase === 'count') banner(String(Math.ceil(s.pt)), 'Point at the TV and tap LOCK FRONT');
+  else if(phase === 'break' && mode === 'wagon') banner((W_STAGES[s.sg] || W_STAGES[0]).name.toUpperCase() + ' - THROUGH!', 'Next: ' + W_STAGES[(s.sg + 1) % W_STAGES.length].name + ' in ' + Math.ceil(s.pt));
   else if(phase === 'break') banner('WAVE ' + s.w + ' CLEARED', 'Next wave in ' + Math.ceil(s.pt));
   if(phase === 'over' && was !== 'over') results();
   board();
@@ -375,7 +402,10 @@ function board(){
     d.querySelector('.s').textContent = p.s.toLocaleString();
     d.querySelector('.kk').textContent = p.k + ' kills';
     const h = d.querySelector('.heat i');
-    if(mode === 'zombie'){
+    if(mode === 'wagon'){
+      h.parentNode.style.visibility = 'hidden';
+      d.querySelector('.mm').textContent = 'seat ' + (p.rk + 1) + ' · ' + (p.rl ? 'reloading' : '●'.repeat(Math.max(0, p.am)));
+    } else if(mode === 'zombie'){
       h.parentNode.style.visibility = 'hidden';
       d.querySelector('.mm').textContent = p.r && p.fx >= 0 ? '🔨 ' + SECTIONS[p.fx].name : ['🔫 pistol', '💥 shotgun', '🎯 sniper'][p.w] || '';
     } else {
@@ -408,6 +438,7 @@ function call(text, color){
 
 function results(){
   if(mode === 'zombie') return zResults();
+  if(mode === 'wagon') return wResults();
   $('overTitle').textContent = 'THE STATION HAS FALLEN';
   const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
   const aw = awards(pl);
@@ -422,6 +453,28 @@ function results(){
     if(aw[p.id]){ const a = document.createElement('span'); a.className = 'award'; a.textContent = aw[p.id]; n.appendChild(a); }
     tr.appendChild(n);
     for(const v of [p.s.toLocaleString(), p.k, p.tp, p.sh ? Math.round(100 * p.hi / p.sh) + '%' : '-']){
+      const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+    }
+    t.appendChild(tr);
+  });
+}
+
+function wResults(){
+  const pl = (S.pl || []).slice().sort((a, b) => b.s - a.s);
+  const aw = wAwards(pl), why = S.why, st = W_STAGES[why ? why.stage : S.sg] || W_STAGES[0];
+  $('overTitle').textContent = 'THEY GOT THE GOLD!';
+  $('overSub').innerHTML = '';
+  $('overSub').appendChild(document.createTextNode((why && W_ENEMIES[why.type] ? (why.type === 'dynamite' ? 'Dynamite' : 'A ' + W_ENEMIES[why.type].name) + ' finished the wagon' : 'The wagon fell') + ' in ' + st.name +
+    ', stage ' + S.w + ', ' + (Math.round((S.dist || 0) / 160.9) / 10) + ' miles down the trail · ' + pl.reduce((a, p) => a + p.s, 0).toLocaleString() + ' points together. '));
+  if(S.nr){ const r = document.createElement('span'); r.className = 'record'; r.textContent = 'NEW RECORD!'; $('overSub').appendChild(r); }
+  const t = $('results');
+  t.innerHTML = '<tr><th></th><th>score</th><th>hits</th><th>dynamite</th><th>aim</th></tr>';
+  pl.forEach(p => {
+    const tr = document.createElement('tr');
+    const n = document.createElement('td'); n.style.color = COLORS[p.c]; n.textContent = p.n;
+    if(aw[p.id]){ const a = document.createElement('span'); a.className = 'award'; a.textContent = aw[p.id]; n.appendChild(a); }
+    tr.appendChild(n);
+    for(const v of [p.s.toLocaleString(), p.k, p.df, p.sh ? Math.round(100 * p.hi / p.sh) + '%' : '-']){
       const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
     }
     t.appendChild(tr);
@@ -520,7 +573,7 @@ $('modePick').addEventListener('click', e => {
 });
 addEventListener('keydown', e => {
   soundTap();
-  if(host && (e.key === '1' || e.key === '2')) host.setMode(e.key === '1' ? 'space' : 'zombie');
+  if(host && (e.key === '1' || e.key === '2' || e.key === '3')) host.setMode({1: 'space', 2: 'zombie', 3: 'wagon'}[e.key]);
   if(e.key === 'Enter' && host) host.go();
   if(e.key === 'f' || e.key === 'F'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }
   if(e.key === 'm' || e.key === 'M'){ SND.setMusic(!SND.musicEnabled()); }
@@ -529,7 +582,13 @@ addEventListener('keydown', e => {
 function frame(){
   requestAnimationFrame(frame);
   const now = performance.now();
-  if(mode === 'zombie'){
+  if(mode === 'wagon'){
+    wtv.frame(Math.min(0.1, (now - (frame.last || now)) / 1000));
+    const g = zhud.getContext('2d');
+    if(zhud.width !== innerWidth){ zhud.width = innerWidth; zhud.height = innerHeight; }
+    g.clearRect(0, 0, zhud.width, zhud.height);
+    if(phase !== 'lobby') wtv.drawHud(g, zhud.width, zhud.height);
+  } else if(mode === 'zombie'){
     ztv.frame(Math.min(0.1, (now - (frame.last || now)) / 1000));
     const g = zhud.getContext('2d');
     if(zhud.width !== innerWidth){ zhud.width = innerWidth; zhud.height = innerHeight; }
@@ -543,7 +602,7 @@ function frame(){
   if(now > bannerT) $('banner').classList.remove('on');
   const theme = room && room.theme;
   const z = mode === 'zombie';
-  const kind = z ? (room && room.look === 'gameday' ? 'gameday' : 'zombie') : 'space';
+  const kind = z ? (room && room.look === 'gameday' ? 'gameday' : 'zombie') : mode === 'wagon' ? 'wagon' : 'space';
   const want = SND.pick(kind, phase, theme, room && room.themePicked, S && S.boss);
   SND.music(want);
   const cr = SND.musicCredit();
@@ -553,7 +612,7 @@ requestAnimationFrame(frame);
 setInterval(() => $('soundPill').classList.toggle('off', SND.soundOn()), 1000);
 
 window.NW_TV = {host: () => host, fence: () => ztv ? ztv.yard.sd.length : 0, state: () => ({phase, mode, wave: S && S.w, hull: S && S.hull, secs: S && S.sec, room, players: S && S.pl,
-  ents: mode === 'zombie' ? (ztv ? ztv.yard.mons.size : 0) : world.ents.size})};
+  ents: mode === 'zombie' ? (ztv ? ztv.yard.mons.size : 0) : mode === 'wagon' ? (wtv ? wtv.trail.foes.size : 0) : world.ents.size})};
 </script>
 </body>
 </html>

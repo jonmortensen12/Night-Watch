@@ -19,8 +19,9 @@
    lobby picks one; both have the same create / join / step / snap shape. */
 import * as NW from './sim.js';
 import * as ZB from './zsim.js';
-const GAMES = {space: NW, zombie: ZB, haunt: ZB};
-const THEME0 = {space: 'nightwatch', zombie: 'danse', haunt: 'danse'};
+import * as WG from './wsim.js';
+const GAMES = {space: NW, zombie: ZB, haunt: ZB, wagon: WG};
+const THEME0 = {space: 'nightwatch', zombie: 'danse', haunt: 'danse', wagon: 'dustdevil'};
 
 export const PROTO = NW.PROTO;
 export const PROTO_MIN = 1;
@@ -34,9 +35,9 @@ function loadSave(){
   let s = {};
   try { s = JSON.parse(localStorage.getItem('nwatch_save') || '{}') || {}; } catch(e){}
   // the first build kept one record and one theme, for space
-  const out = {games: s.games || 0, mode: s.mode === 'zombie' ? 'zombie' : 'space',
+  const out = {games: s.games || 0, mode: s.mode === 'zombie' || s.mode === 'wagon' ? s.mode : 'space',
     themes: Object.assign({}, THEME0, s.themes || {}),
-    bests: Object.assign({space: {best: s.best || 0, bestScore: s.bestScore || 0}, zombie: {best: 0, bestScore: 0}, haunt: {best: 0, bestScore: 0}}, s.bests || {})};
+    bests: Object.assign({space: {best: s.best || 0, bestScore: s.bestScore || 0}, zombie: {best: 0, bestScore: 0}, haunt: {best: 0, bestScore: 0}, wagon: {best: 0, bestScore: 0}}, s.bests || {})};
   if(s.theme && !s.themes) out.themes.space = s.theme;
   return out;
 }
@@ -110,7 +111,13 @@ export function createHost(opts){
       }
       const p = id && people[id];
       if(!p) return;
-      if(!p.conn && p.lastConn === c){ p.conn = c; p.gone = 0; if(p.role === 'player') G.join(S, id, p.name); roomDirty = true; }
+      if(!p.conn && p.lastConn === c){
+        p.conn = c; p.gone = 0;
+        // back after going quiet: in the lobby it may have been given up and
+        // come back as somebody new, so say again who it is
+        if(p.role === 'player'){ const pl = G.join(S, id, p.name); send(p, {t: 'you', id, c: pl.color}); }
+        roomDirty = true;
+      }
       if(p.conn !== c) return;
       p.seen = performance.now();
       fromPhone(p, d);
@@ -131,11 +138,15 @@ export function createHost(opts){
     if(d.t === 'in'){
       if(p.role !== 'player') return;
       if(mode === 'space') NW.input(S, p.id, d.a, d.tg, d.f);
+      else if(mode === 'wagon') WG.input(S, p.id, d);
       else ZB.input(S, p.id, d);
     } else if(d.t === 'msl'){
       if(p.role === 'player' && mode === 'space') NW.missile(S, p.id, d.tg | 0);
     } else if(d.t === 'mode'){
       if(GAMES[d.key]) setMode(d.key);
+    } else if(d.t === 'seat'){
+      // the wagon: where this player sits on the bench, between games
+      if(mode === 'wagon' && p.role === 'player' && (S.phase === 'lobby' || S.phase === 'over')){ WG.setSeat(S, p.id, d.i | 0); roomDirty = true; }
     } else if(d.t === 'ready'){
       if(S.phase === 'lobby'){ p.ready = !!d.v; roomDirty = true; maybeStart(); }
     } else if(d.t === 'go'){

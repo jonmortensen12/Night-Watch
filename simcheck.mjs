@@ -9,6 +9,7 @@
    below are a starting point to retune after a family playtest. */
 import * as NW from './web/sim.js';
 import * as ZB from './web/zsim.js';
+import * as WG from './web/wsim.js';
 
 const DT = 1 / 60;
 let fails = 0;
@@ -482,6 +483,189 @@ console.log('the bunker drawn on a floor (printed markers, Walk the room)');
   ok(rows[0].waves >= 3 && rows[0].waves <= 14, 'one defender walking a living room lasts a handful of waves');
   ok(rows.every(r => r.wt >= 20 && r.wt <= 120), 'waves take half a minute to two minutes');
 }
+
+/* ================================================================ the wagon */
+/* A computer gunslinger: sits in its seat, goes for whatever is most
+   dangerous (dynamite in the air, anybody aboard, whoever is aiming),
+   turns at a person's speed with a person's wobble, and flicks a reload
+   when the cylinder is empty. */
+function wbot(S, p, mem, skill){
+  const eye = [p.x, WG.EYE, p.z];
+  const live = S.foes.filter(f => WG.hittable(f) && f.type !== 'tumble');
+  const urgency = f => {
+    const c = WG.centre(f), d = Math.hypot(c[0] - eye[0], c[1] - eye[1], c[2] - eye[2]);
+    let u = 60 - d;
+    if(f.type === 'dynamite') u += 90 - f.aux * 10;
+    if(f.st === 'aboard' || f.st === 'peck') u += 80;
+    if(f.st === 'board' || f.st === 'dive' || f.st === 'swing') u += 50;
+    if(f.st === 'aim' || f.st === 'up') u += 35;
+    if(f.type === 'crate') u += S.hp < 60 ? 30 : -20;
+    if(f.type === 'balloon') u -= 10;
+    return u + mem.rand() * 6;
+  };
+  if(!mem.tg || !live.find(f => f.id === mem.tg) || (mem.retarget -= WDT) <= 0){
+    let best = null, bu = -Infinity;
+    for(const f of live){ const u = urgency(f); if(u > bu){ bu = u; best = f; } }
+    mem.tg = best ? best.id : 0; mem.react = skill.react; mem.retarget = 1.2;
+  }
+  const f = live.find(q => q.id === mem.tg);
+  let firing = false, tg = 0, rl = 0;
+  if(p.ammo <= 0 && p.rl <= 0) rl = 1;
+  if(f){
+    const c = WG.centre(f);
+    const v = [c[0] - eye[0], c[1] - eye[1], c[2] - eye[2]], dist = Math.hypot(...v);
+    const want = v.map(q => q / dist);
+    mem.react -= WDT;
+    const a = p.aim, cos = Math.max(-1, Math.min(1, a[0] * want[0] + a[1] * want[1] + a[2] * want[2]));
+    const ang = Math.acos(cos), maxTurn = skill.turn * WDT;
+    let next = want;
+    if(ang > maxTurn){ const k = maxTurn / ang; next = a.map((q, i) => q * (1 - k) + want[i] * k); }
+    const j = skill.shake * (0.5 + Math.min(1, ang));
+    if(mem.react <= 0) p.aim = next.map(q => q + (mem.rand() - 0.5) * j);
+    const off = Math.acos(Math.max(-1, Math.min(1, (p.aim[0] * want[0] + p.aim[1] * want[1] + p.aim[2] * want[2]) / Math.hypot(...p.aim))));
+    if(off < Math.atan(0.6 / dist) + 0.02){ firing = true; tg = f.id; }
+    // a person taps: about four shots a second, not a machine gun
+    if(firing && (mem.tap = (mem.tap || 0) - WDT) > 0) firing = false;
+    else if(firing) mem.tap = 0.25;
+  }
+  WG.input(S, p.id, {a: p.aim, tg, f: firing, rl});
+}
+const WDT = 1 / 60;
+function wplay(n, seed, skill, maxMin = 25){
+  const S = WG.create(seed);
+  const mems = [];
+  for(let i = 0; i < n; i++){
+    WG.join(S, 'p' + i, 'Bot ' + i);
+    let s = seed * 31 + i;
+    mems.push({rand: () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)});
+  }
+  WG.start(S);
+  let t = 0, waveTimes = [], lastWave = 0, lastT = 0, peak = 0, ouch = {}, kinds = {};
+  while(S.phase !== 'over' && t < maxMin * 60){
+    Object.values(S.players).forEach((p, i) => wbot(S, p, mems[i], skill));
+    WG.step(S, WDT);
+    t += WDT;
+    peak = Math.max(peak, S.foes.length);
+    for(const f of S.foes) kinds[f.type] = 1;
+    if(S.wave !== lastWave){ if(lastWave) waveTimes.push(t - lastT); lastWave = S.wave; lastT = t; }
+    for(const e of S.ev) if(e[0] === "ouch"){ const ff = S.foes.find(q => q.id === e[4]); const k = (ff ? ff.type : "dynamite") + "@" + S.stage; ouch[k] = (ouch[k] || 0) + e[1]; }
+    S.ev = [];
+  }
+  return {S, t, waveTimes, peak, kinds, ouch};
+}
+
+console.log('the wagon: basics');
+{
+  const S = WG.create(5);
+  WG.join(S, 'a', 'Ann'); WG.join(S, 'b', 'Bob'); WG.join(S, 'c', 'Cal');
+  ok(['a', 'b', 'c'].map(k => S.players[k].seat).join() === '1,2,3', 'everybody gets the next free seat');
+  ok(S.players.a.x < S.players.b.x && S.players.b.x < S.players.c.x && Math.abs(S.players.b.x) < 1e-9, 'seat 1 is at the left of the bench, as the room faces the TV');
+  WG.input(S, 'a', {seat: 3});
+  ok(S.players.a.seat === 3 && S.players.c.seat === 1 && S.players.a.x > S.players.b.x && S.players.c.x < S.players.b.x, 'taking a seat swaps with whoever had it');
+  WG.input(S, 'b', {seat: 6});
+  ok(S.players.b.rank === 2 && S.players.a.rank === 1, 'seats 1, 3 and 6 are still a bench of three, in that order');
+  WG.leave(S, 'c');
+  ok(Object.keys(S.players).length === 2 && Math.abs(S.players.a.x + S.players.b.x) < 1e-9, 'somebody leaves the lobby: the bench closes up');
+  WG.start(S);
+  ok(S.phase === 'count', 'a game starts with the count');
+  for(let i = 0; i < 60 * 5; i++) WG.step(S, DT);
+  ok(S.phase === 'wave' && S.wave === 1 && S.stage === 0, 'wave 1 is the first stage: ' + WG.STAGES[0].name);
+  const sn = WG.snap(S);
+  ok(sn.mode === 'wagon' && sn.hp === 100 && sn.sg === 0 && sn.pl[0].am === 6 && sn.m.length % 11 === 0, 'the snapshot: wagon health, stage, ammunition, eleven numbers a foe');
+  ok(WG.stageOf(7).key === 'flats' && WG.lapOf(7) === 1 && WG.isBossWave(6) && WG.isBossWave(12) && !WG.isBossWave(5), 'six stages, then round again; the Pass is the boss');
+}
+console.log('the wagon: revolvers');
+{
+  const S = WG.create(8);
+  WG.join(S, 'a', 'Ann'); WG.start(S);
+  for(let i = 0; i < 60 * 5; i++) WG.step(S, DT);
+  S.foes = []; S.plan.sent = S.plan.groups.length + 99;
+  const aimAt = f => { const c = WG.centre(f), p = S.players.a, d = [c[0] - p.x, c[1] - WG.EYE + 0.1, c[2] - p.z], l = Math.hypot(...d); return d.map(q => q / l); };
+  // six shots, then dry
+  const b = WG.newFoe(S, 'rider', 0, 0, -30, {st: 'station', station: [0, -30], fireT: 99, boardT: 99, side: 1});
+  b.hp = b.hpMax = 99;
+  let shots = 0;
+  for(let i = 0; i < 60 * 3; i++){ WG.input(S, 'a', {a: aimAt(b), f: true, tg: b.id}); WG.step(S, DT); shots += S.ev.filter(e => e[0] === 'shot').length; S.ev = []; if(S.players.a.ammo === 0) break; }
+  ok(shots === 6 && S.players.a.ammo === 0, 'six shots and the cylinder is empty');
+  WG.input(S, 'a', {a: aimAt(b), f: true, rl: 1});
+  for(let i = 0; i < 60 * 1.2; i++) WG.step(S, DT);
+  ok(S.players.a.ammo === 0, 'a reload takes a moment');
+  for(let i = 0; i < 60 * 0.3; i++) WG.step(S, DT);
+  ok(S.players.a.ammo > 0 || S.players.a.ammo === 6 || S.players.a.shots > 6, 'then it is full again');
+  // left empty, it reloads itself
+  const T = WG.create(9); WG.join(T, 'a', 'Ann'); WG.start(T); for(let i = 0; i < 60 * 5; i++) WG.step(T, DT);
+  T.players.a.ammo = 0; T.players.a.dry = WG.GUN.autoReload;
+  for(let i = 0; i < 60 * 2.2; i++) WG.step(T, DT);
+  ok(T.players.a.ammo === 6, 'an empty gun reloads itself if nobody flicks');
+  // a bandit behind his rock cannot be hit; up, he can
+  S.foes = []; S.players.a.ammo = 6; S.players.a.rl = 0;
+  const h = WG.newFoe(S, 'bandit', 5, 0, -20, {st: 'hide', timer: 99, side: 1});
+  WG.input(S, 'a', {a: aimAt(h), f: true}); WG.step(S, DT); WG.input(S, 'a', {a: aimAt(h), f: false});
+  for(let i = 0; i < 30; i++) WG.step(S, DT);
+  ok(!h.dead && h.hp === h.hpMax, 'a bandit ducked behind his rock is safe');
+  h.st = 'up'; h.timer = 99;
+  for(let i = 0; i < 60 && !h.dead; i++){ WG.input(S, 'a', {a: aimAt(h), f: i % 15 === 0, tg: h.id}); WG.step(S, DT); }
+  ok(h.dead, 'up from behind it, he goes down');
+  ok(h.z > -20, 'and his rock was coming past the wagon all the while');
+}
+console.log('the wagon: trouble');
+{
+  const fresh = () => { const S = WG.create(11); WG.join(S, 'a', 'Ann'); WG.start(S); for(let i = 0; i < 60 * 5; i++) WG.step(S, DT); S.foes = []; S.plan.sent = S.plan.groups.length + 99; return S; };
+  let S = fresh();
+  const hp0 = S.hp;
+  const t = WG.newFoe(S, 'thrower', 6, 0, -15, {st: 'up', timer: 0.01, side: 1});
+  let blasts = 0, dyn = null;
+  for(let i = 0; i < 60 * 4; i++){ WG.step(S, DT); dyn = dyn || S.foes.find(f => f.type === 'dynamite'); blasts += S.ev.filter(e => e[0] === 'blast').length; S.ev = []; }
+  ok(!!dyn && blasts === 1 && S.hp < hp0, `dynamite thrown at the wagon goes off on it (${(hp0 - S.hp).toFixed(0)} damage)`);
+  S = fresh();
+  WG.newFoe(S, 'thrower', 6, 0, -15, {st: 'up', timer: 0.01, side: 1});
+  for(let i = 0; i < 20; i++) WG.step(S, DT);
+  const d2 = S.foes.find(f => f.type === 'dynamite');
+  const c = WG.centre(d2), p = S.players.a, v = [c[0] - p.x, c[1] - WG.EYE + 0.1, c[2] - p.z], l = Math.hypot(...v);
+  WG.input(S, 'a', {a: v.map(q => q / l), f: true, tg: d2.id}); WG.step(S, DT); WG.input(S, 'a', {f: false});
+  for(let i = 0; i < 60 * 4; i++) WG.step(S, DT);
+  ok(d2.dead && S.hp === 100 && p.defused === 1, 'shot in the air, it does no harm');
+  S = fresh();
+  const r = WG.newFoe(S, 'rider', -8, 0, 40, {st: 'ride', station: [-4, 2], fireT: 99, boardT: 3, side: -1});
+  let aboard = false;
+  for(let i = 0; i < 60 * 15; i++){ WG.step(S, DT); if(r.st === 'aboard') aboard = true; }
+  ok(aboard && S.hp < 100, 'a rider left alone jumps aboard and goes for the wagon');
+  S = fresh();
+  const v0 = WG.newFoe(S, 'vulture', 30, 18, -30, {st: 'fly', ang: 0, R: 8, timer: 2});
+  let dove = false;
+  for(let i = 0; i < 60 * 20; i++){ WG.step(S, DT); if(v0.st === 'peck') dove = true; }
+  ok(dove && S.hp < 100, 'vultures circle, then dive for the cargo');
+  S = fresh(); S.hp = 50;
+  WG.newFoe(S, 'rider', 30, 0, 50, {st: 'station', station: [30, 50], fireT: 99, boardT: 99, side: 1});   // the stage is not over
+  const cr = WG.newFoe(S, 'crate', 4, 0, -20, {st: 'idle', side: 1});
+  const cc = WG.centre(cr), q = S.players.a, vv = [cc[0] - q.x, cc[1] - WG.EYE + 0.1, cc[2] - q.z], ll = Math.hypot(...vv);
+  WG.input(S, 'a', {a: vv.map(x => x / ll), f: true, tg: cr.id}); WG.step(S, DT);
+  ok(S.hp === 65, 'shooting a supply crate patches the wagon up');
+  const B = WG.create(3); WG.join(B, 'a', 'Ann'); WG.start(B);
+  while(B.wave < 6){ WG.step(B, DT); if(B.phase === 'wave' && B.wave < 6){ B.foes = []; B.plan.sent = B.plan.groups.length; } B.hp = 100; }
+  ok(B.foes.some(f => f.type === 'balloon'), 'wave 6, Outlaw\'s Pass: the Balloon Baron');
+  let drops = 0, crew = 0;
+  for(let i = 0; i < 60 * 40 && B.phase !== 'over'; i++){ WG.step(B, DT); B.hp = 100; drops += B.ev.filter(e => e[0] === 'toss').length; crew += B.ev.filter(e => e[0] === 'crew').length; B.ev = []; }
+  ok(drops >= 3 && crew >= 1, `he drops dynamite (${drops}) and sends his crew down ropes (${crew})`);
+}
+
+console.log('the wagon: whole games, computer gunslingers (tuning bounds)');
+const wrows = [];
+for(const [label, n, skill] of [['1 average', 1, AVG], ['2 average', 2, AVG], ['4 average', 4, AVG], ['2 good', 2, GOOD]]){
+  const res = [];
+  for(let seed = 1; seed <= 5; seed++) res.push(wplay(n, seed, skill));
+  const waves = res.map(r => r.S.wave), m = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const row = {label, waves: m(waves), wt: m(res.flatMap(r => r.waveTimes)), kinds: Object.assign({}, ...res.map(r => r.kinds))};
+  wrows.push(row);
+  console.log(`  ${label.padEnd(10)} waves ${waves.join(',').padEnd(16)} mean ${row.waves.toFixed(1)}  ${m(res.map(r => r.t / 60)).toFixed(1)} min  ${row.wt.toFixed(0)} s/wave  lost to ${res.map(r => r.S.why ? r.S.why.type + ' (' + WG.STAGES[r.S.why.stage].key + ')' : '-').join(', ')}`);
+}
+const WR = Object.fromEntries(wrows.map(r => [r.label, r]));
+ok(WR['1 average'].waves >= 3 && WR['1 average'].waves <= 8, 'one average gunslinger gets a few stages down the trail');
+ok(WR['4 average'].waves >= 4 && WR['4 average'].waves <= 12, 'four: further, not for ever');
+ok(WR['2 good'].waves >= WR['2 average'].waves, 'skill matters');
+ok(WR['2 good'].waves >= 6.5, 'good players get past the Balloon Baron');
+ok(wrows.every(r => r.wt >= 30 && r.wt <= 110), 'stages take half a minute to two minutes');
+ok(['rider', 'bandit', 'thrower', 'dynamite', 'vulture', 'bat', 'cart', 'swinger', 'balloon', 'crate'].every(k => WR['2 good'].kinds[k]), 'every kind of trouble turns up');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall good');
 process.exit(fails ? 1 : 0);

@@ -60,6 +60,15 @@ INST = {
     'oboe':     dict(gm='oboe', gain=0.4, pan=0.2, send=0.45, rel=0.25, sus=True),
     'bells':    dict(gm='tubular_bells', gain=0.42, pan=0.0, send=0.6, rel=1.5, sus=False, ring=3.5),
     'mbox':     dict(gm='music_box', gain=0.34, pan=0.15, send=0.55, rel=0.8, sus=False, ring=1.6),
+    # the West
+    'guitar':   dict(gm='acoustic_guitar_steel', gain=0.4, pan=-0.2, send=0.3, rel=0.3, sus=False, ring=1.2),
+    'nylon':    dict(gm='acoustic_guitar_nylon', gain=0.48, pan=-0.15, send=0.4, rel=0.4, sus=False, ring=1.8),
+    'harmonica': dict(gm='harmonica', gain=0.32, pan=0.2, send=0.4, rel=0.25, sus=True),
+    'banjo':    dict(gm='banjo', gain=0.38, pan=0.25, send=0.25, rel=0.2, sus=False, ring=0.7),
+    'whistle':  dict(gm='whistle', gain=0.34, pan=0.1, send=0.55, rel=0.3, sus=True),
+    'fiddle':   dict(gm='fiddle', gain=0.38, pan=0.3, send=0.35, rel=0.2, sus=True),
+    'honky':    dict(gm='honkytonk_piano', gain=0.36, pan=-0.1, send=0.3, rel=0.4, sus=False, ring=1.4),
+    'wood':     dict(gm='woodblock', gain=0.42, pan=0.0, send=0.15, rel=0.05, sus=False, ring=0.15),
 }
 
 _cache = {}
@@ -920,6 +929,199 @@ def c_gover(sc):
     sc.drum('snare', 2.7, 0.3)
 
 
+
+# ---------------------------------------------------------------- the West
+def strum(sc, inst, beat, pitches, vel, up=False, gap=0.03, dur=0.5):
+    """A guitar strum: the strings one after another, down or up."""
+    ps = list(pitches)[::-1] if up else list(pitches)
+    for i, m in enumerate(ps):
+        sc.note(inst, beat + i * gap, dur, m, vel * (0.85 if up else 1.0))
+
+
+def gallop(sc, bar, ch, inst='guitar', vel=0.5, clop=True, lo=52, hi=67):
+    """Horses: every beat a long and two short (an eighth, two sixteenths),
+    strummed, with the woodblock clip-clopping along."""
+    bass, pcs, root = chord(ch)
+    v = voice(pcs, lo, hi)
+    for b in range(4):
+        t = bar * 4 + b
+        strum(sc, inst, t, v, vel, dur=0.4)
+        strum(sc, inst, t + 0.5, v, vel * 0.7, up=True, dur=0.2)
+        strum(sc, inst, t + 0.75, v, vel * 0.75, dur=0.2)
+        if clop:
+            sc.note('wood', t, 0.2, 'E5' if b % 2 == 0 else 'C5', 0.55)
+            sc.note('wood', t + 0.5, 0.1, 'C5', 0.35)
+            sc.note('wood', t + 0.75, 0.1, 'C5', 0.4)
+
+
+def boomchick(sc, bar, ch, vb=0.5):
+    """The bass on 1 and 3, root then fifth."""
+    bass, pcs, root = chord(ch)
+    sc.note('bass', bar * 4, 1.6, near(bass, 33, 45), vb)
+    sc.note('bass', bar * 4 + 2, 1.6, near((bass + 7) % 12, 33, 45), vb * 0.9)
+
+
+def dustdevil():
+    """Dust Devil: the wagon at a gallop. A minor, 150 bpm - trumpet, strummed
+    guitar on the gallop, woodblock hooves, a whistle and a fiddle."""
+    sc = Score(150, 36, seed=301)
+    A = ['Am', 'Am', 'G', 'G', 'F', 'F', 'E7', 'Am']
+    B = ['C', 'C', 'G', 'G', 'Am', 'Am', 'E7', 'E7']
+    prog = ['Am'] * 4 + A + A + B + A
+    for bar, ch in enumerate(prog):
+        gallop(sc, bar, ch, vel=0.42 if bar < 4 else 0.5)
+        boomchick(sc, bar, ch, 0.5)
+        if bar % 8 == 4:
+            sc.drum('crash', bar * 4, 0.5)
+        if bar >= 28:
+            sc.drum('snare', bar * 4 + 1, 0.35); sc.drum('snare', bar * 4 + 3, 0.4)
+    melA = ['E5:1.5 A5:0.5 A5:1 G5:1', 'E5:1 C5:1 D5:1 E5:1', 'D5:1.5 G5:0.5 G5:1 F5:1', 'D5:2 B4:2',
+            'C5:1.5 F5:0.5 F5:1 E5:1', 'D5:1 C5:1 A4:1 C5:1', 'B4:1 E5:1 G#5:1 B5:1', 'A5:3 r:1']
+    melB = ['G5:1 E5:0.5 G5:0.5 C6:2', 'B5:1 A5:1 G5:2', 'D5:1 G5:0.5 A5:0.5 B5:2', 'A5:1 G5:1 D5:2',
+            'E5:1 A5:0.5 B5:0.5 C6:2', 'B5:1 A5:1 E5:2', 'G#5:1 B5:1 D6:1 B5:1', 'E6:2 r:2']
+    sc.line('whistle', 0, 'E5:2 A5:2 G5:2 E5:2 D5:2 E5:2 A4:4', 0.45)
+    for i, ln in enumerate(melA):
+        sc.line('trumpet', (4 + i) * 4, ln, 0.8, legato=0.85)
+        sc.line('trumpet', (12 + i) * 4, ln, 0.82, legato=0.85)
+        sc.line('whistle', (12 + i) * 4, ln, 0.4, shift=12)
+        sc.line('trumpet', (28 + i) * 4, ln, 0.88, legato=0.85)
+        sc.line('brass', (28 + i) * 4, ln, 0.4, shift=-12)
+        sc.line('fiddle', (28 + i) * 4, ln, 0.45, shift=12)
+    for i, ln in enumerate(melB):
+        sc.line('fiddle', (20 + i) * 4, ln, 0.6, legato=0.9)
+        sc.line('harmonica', (20 + i) * 4, ln, 0.35, shift=-12)
+    return sc
+
+
+def lonesome():
+    """Lonesome Mesa: a whistle over a nylon guitar, the sun going down.
+    D minor, 76 bpm."""
+    sc = Score(76, 16, seed=311)
+    prog = ['Dm', 'Dm', 'C', 'C', 'Bb', 'Bb', 'A', 'A', 'Dm', 'Dm', 'F', 'C', 'Bb', 'Gm', 'A', 'Dm']
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        ostinato(sc, 'nylon', bar, ch, [0, 1, 2, 1, 3, 1, 2, 1], 50, 69, 0.5)
+        sc.note('bass', bar * 4, 3.8, near(bass, 33, 45), 0.42)
+        sc.hold('harmonica', bar * 4, 3.9, voice(pcs, 57, 66), 0.16)
+        # slow hooves, far off
+        for b in (0, 1.5, 2, 3.5):
+            sc.note('wood', bar * 4 + b, 0.1, 'C5', 0.22)
+        if bar in (0, 8):
+            sc.note('bells', bar * 4, 4, near(bass, 50, 62), 0.3)
+    mel = ['D5:3 A4:1', 'D5:1 E5:1 F5:2', 'E5:3 C5:1', 'G5:2 E5:2', 'F5:3 D5:1', 'Bb4:2 D5:2', 'C#5:4', 'E5:2 A4:2',
+           'D5:3 F5:1', 'A5:2 G5:1 F5:1', 'A5:3 F5:1', 'G5:2 E5:2', 'F5:2 D5:1 Bb4:1', 'G4:2 Bb4:2', 'A4:1 C#5:1 E5:2', 'D5:4']
+    for i, ln in enumerate(mel):
+        sc.line('whistle', i * 4, ln, 0.6, legato=0.95)
+    for i in range(8, 16):
+        sc.line('strings', i * 4, mel[i], 0.25, shift=-12, legato=1.0)
+    return sc
+
+
+def saloon():
+    """Saloon Shuffle: honky-tonk piano, banjo and a fiddle. G major, 138 bpm."""
+    sc = Score(138, 32, seed=321)
+    P = ['G', 'G', 'C', 'G', 'D', 'D', 'G', 'G', 'G', 'G', 'C', 'C', 'G', 'D', 'G', 'G']
+    prog = P * 2
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        # stride: bass on 1 and 3, the chord on 2 and 4
+        sc.note('honky', bar * 4, 0.8, near(bass, 36, 47), 0.5)
+        sc.note('honky', bar * 4 + 2, 0.8, near((bass + 7) % 12, 36, 47), 0.45)
+        sc.hold('honky', bar * 4 + 1, 0.5, voice(pcs, 55, 66), 0.4)
+        sc.hold('honky', bar * 4 + 3, 0.5, voice(pcs, 55, 66), 0.4)
+        ostinato(sc, 'banjo', bar, ch, [0, 1, 2, 3, 1, 2, 3, 2], 60, 76, 0.4)
+        sc.note('bass', bar * 4, 1.5, near(bass, 33, 45), 0.4)
+        sc.note('bass', bar * 4 + 2, 1.5, near((bass + 7) % 12, 33, 45), 0.36)
+        sc.drum('snare', bar * 4 + 1, 0.22); sc.drum('snare', bar * 4 + 3, 0.26)
+    mel = ['B4:0.5 D5:0.5 G5:1 G5:0.5 A5:0.5 B5:1', 'A5:0.5 G5:0.5 E5:1 D5:2', 'E5:0.5 G5:0.5 C6:1 B5:0.5 A5:0.5 G5:1', 'B5:1 A5:0.5 G5:0.5 D5:2',
+           'F#5:0.5 A5:0.5 D6:1 C6:0.5 B5:0.5 A5:1', 'F#5:1 E5:0.5 F#5:0.5 A5:2', 'G5:0.5 B5:0.5 D6:1 B5:1 G5:1', 'G5:3 r:1',
+           'D5:0.5 G5:0.5 B5:1 B5:0.5 C6:0.5 D6:1', 'B5:1 G5:1 D5:2', 'E5:0.5 G5:0.5 C6:1 C6:0.5 B5:0.5 A5:1', 'G5:1 E5:1 C5:2',
+           'B4:0.5 D5:0.5 G5:1 A5:1 B5:1', 'A5:1 F#5:1 D5:2', 'G5:0.5 F#5:0.5 G5:0.5 A5:0.5 B5:1 A5:1', 'G5:3 r:1']
+    for i, ln in enumerate(mel):
+        sc.line('fiddle', i * 4, ln, 0.62, legato=0.9)
+        sc.line('honky', (16 + i) * 4, ln, 0.55, shift=12)
+        sc.line('fiddle', (16 + i) * 4, ln, 0.45, legato=0.9)
+    return sc
+
+
+def wlobby():
+    """Round the campfire before setting off: nylon guitar and harmonica. G major, 84 bpm."""
+    sc = Score(84, 16, seed=331)
+    P = ['G', 'Em', 'C', 'D', 'G', 'Em', 'Am', 'D']
+    prog = P * 2
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        ostinato(sc, 'nylon', bar, ch, [0, 2, 1, 2, 3, 2, 1, 2], 50, 69, 0.45)
+        sc.note('bass', bar * 4, 3.6, near(bass, 31, 43), 0.36)
+    mel = ['D5:2 B4:1 G4:1', 'E5:2 D5:2', 'C5:1 E5:1 G5:2', 'F#5:2 A5:2', 'B5:2 A5:1 G5:1', 'E5:3 G5:1', 'A5:1 G5:1 F#5:1 E5:1', 'D5:4']
+    for i, ln in enumerate(mel):
+        sc.line('harmonica', i * 4, ln, 0.5, legato=0.95)
+        sc.line('whistle', (8 + i) * 4, ln, 0.42, legato=0.95)
+    return sc
+
+
+def baronboss():
+    """The Balloon Baron: a showdown. D minor, 160 bpm - trumpets, a fiddle
+    sawing away, timpani and the gallop."""
+    sc = Score(160, 24, seed=341)
+    P = ['Dm', 'Dm', 'Gm', 'Dm', 'Bb', 'A', 'Dm', 'A']
+    prog = P * 3
+    for bar, ch in enumerate(prog):
+        bass, pcs, root = chord(ch)
+        gallop(sc, bar, ch, vel=0.5)
+        sc.note('tuba', bar * 4, 1.5, near(bass, 26, 38), 0.6)
+        sc.note('timp', bar * 4, 1, near(bass, 38, 50), 0.6)
+        sc.note('timp', bar * 4 + 2, 1, near((bass + 7) % 12, 38, 50), 0.45)
+        ostinato(sc, 'spicc', bar, ch, [0, 1, 2, 1, 0, 1, 2, 1], 50, 70, 0.45)
+        if bar % 8 == 0:
+            sc.drum('crash', bar * 4, 0.7)
+            sc.note('hit', bar * 4, 0.5, 'D4', 0.45)
+    mel = ['A5:1 A5:0.5 Bb5:0.5 A5:1 F5:1', 'D5:2 r:1 A4:1', 'D5:1 F5:1 Bb5:1 A5:1', 'G5:3 F5:1',
+           'F5:1 G5:0.5 A5:0.5 Bb5:1 D6:1', 'C#6:2 A5:2', 'D6:1 A5:1 F5:1 D5:1', 'E5:2 C#5:2']
+    for i, ln in enumerate(mel):
+        sc.line('trumpet', (8 + i) * 4, ln, 0.84, legato=0.85)
+        sc.line('trumpet', (16 + i) * 4, ln, 0.88, legato=0.85)
+        sc.line('fiddle', (16 + i) * 4, ln, 0.5, shift=12, legato=0.9)
+        sc.line('trombone', (16 + i) * 4, ln, 0.45, shift=-12, legato=0.85)
+    return sc
+
+
+def c_wwave(sc):
+    # into a new stage: a bugle call over the gallop
+    sc.line('trumpet', 0, 'D5:0.5 G5:0.5 B5:0.5 D6:1.5 B5:0.5 D6:1 G6:3', 0.88)
+    sc.line('trombone', 0, 'D4:0.5 G4:0.5 B4:0.5 D5:1.5 B4:0.5 D5:1 G5:3', 0.5, shift=-12)
+    for bar in range(2):
+        gallop(sc, bar, 'G', vel=0.45)
+    sc.drum('crash', 4.5, 0.7)
+    sc.note('timp', 4.5, 2, 'G2', 0.7)
+
+
+def c_wclear(sc):
+    # through: "shave and a haircut" on the honky-tonk piano and banjo
+    for inst, v in (('honky', 0.7), ('banjo', 0.55)):
+        sc.line(inst, 0, 'C5:1 G4:0.5 G4:0.5 A4:1 G4:1 r:1 B4:1 C5:2', v)
+    sc.hold('honky', 6, 2, ['C3', 'G3', 'C4', 'E4'], 0.6)
+    sc.note('bass', 0, 1, 'C2', 0.5); sc.note('bass', 6, 2, 'C2', 0.6)
+    sc.drum('snare', 5, 0.5); sc.drum('snare', 6, 0.6)
+
+
+def c_baronwarn(sc):
+    # the Baron: a lonely whistle, the low brass, the timpani coming up
+    sc.line('whistle', 0, 'A5:1.5 F5:0.5 D5:2', 0.6)
+    sc.hold('trombone', 2, 6, ['D3', 'A3', 'D4'], 0.6)
+    sc.note('tuba', 2, 6, 'D2', 0.7)
+    roll(sc, 'timp', 2, 5, 'D3', 0.25, 0.9, step=0.125)
+    sc.note('hit', 7, 0.5, 'D4', 0.7)
+    sc.drum('crash', 7, 0.9)
+
+
+def c_wover(sc):
+    # the gang rides off with the gold: a harmonica, sliding down
+    sc.line('harmonica', 0, 'G4:1 F#4:1 F4:1 E4:4', 0.7, legato=0.95)
+    strum(sc, 'nylon', 3, [40, 47, 52, 55, 59, 64], 0.5, dur=4)
+    sc.note('bass', 3, 4, 'E1', 0.4)
+
+
 # ---------------------------------------------------------------- short cues
 def cue(bpm, bars, fn, seed=7):
     sc = Score(bpm, bars, seed=seed)
@@ -1010,14 +1212,18 @@ THEMES = {
     'hollow': ('Hollow Hill', 'A music box, a heartbeat and tolling bells', hollow, 'zombie'),
     'pepband': ('Pep Band', 'A march from the stands: trumpets, tuba, snares', pepband, 'gameday'),
     'drumline': ('Drumline', 'Snares and bass drums, brass shouting back', drumline, 'gameday'),
+    'dustdevil': ('Dust Devil', 'A gallop: trumpet, guitar and hooves', dustdevil, 'wagon'),
+    'lonesome': ('Lonesome Mesa', 'A whistle over a nylon guitar', lonesome, 'wagon'),
+    'saloon': ('Saloon Shuffle', 'Honky-tonk piano, banjo and fiddle', saloon, 'wagon'),
 }
-LOOPS = {'lobby': lobby, 'boss': boss, 'zlobby': zlobby, 'witchboss': witchboss, 'globby': globby, 'swoopboss': swoopboss}
+LOOPS = {'lobby': lobby, 'boss': boss, 'zlobby': zlobby, 'witchboss': witchboss, 'globby': globby, 'swoopboss': swoopboss, 'wlobby': wlobby, 'baronboss': baronboss}
 CUES = {
     'count': (120, 1, c_count), 'wave': (120, 1, c_wave), 'clear': (110, 1, c_clear),
     'bosswarn': (90, 2, c_bosswarn), 'victory': (120, 2, c_victory), 'gameover': (76, 2, c_gameover),
     'record': (110, 2, c_record), 'pickup': (120, 1, c_pickup),
     'zwave': (80, 1, c_zwave), 'zclear': (100, 1, c_zclear), 'witchwarn': (90, 2, c_witchwarn), 'zover': (70, 2, c_zover),
     'gwave': (120, 1, c_gwave), 'gclear': (120, 1, c_gclear), 'swoopwarn': (100, 1, c_swoopwarn), 'gover': (80, 2, c_gover),
+    'wwave': (130, 2, c_wwave), 'wclear': (150, 2, c_wclear), 'baronwarn': (100, 2, c_baronwarn), 'wover': (76, 2, c_wover),
 }
 EDGE = 0.3        # seconds of wrap-around either side of a loop
 

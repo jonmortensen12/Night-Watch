@@ -62,6 +62,33 @@
    "title": "Drumline",
    "blurb": "Snares and bass drums, brass shouting back",
    "mode": "gameday"
+  },
+  "dustdevil": {
+   "file": "dustdevil.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 57.9,
+   "bpm": 150,
+   "title": "Dust Devil",
+   "blurb": "A gallop: trumpet, guitar and hooves",
+   "mode": "wagon"
+  },
+  "lonesome": {
+   "file": "lonesome.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 50.82632653061224,
+   "bpm": 76,
+   "title": "Lonesome Mesa",
+   "blurb": "A whistle over a nylon guitar",
+   "mode": "wagon"
+  },
+  "saloon": {
+   "file": "saloon.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 55.952176870748296,
+   "bpm": 138,
+   "title": "Saloon Shuffle",
+   "blurb": "Honky-tonk piano, banjo and fiddle",
+   "mode": "wagon"
   }
  },
  "loops": {
@@ -100,6 +127,18 @@
    "loopStart": 0.3,
    "loopEnd": 38.699999999999996,
    "bpm": 150
+  },
+  "wlobby": {
+   "file": "wlobby.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 46.01428571428571,
+   "bpm": 84
+  },
+  "baronboss": {
+   "file": "baronboss.mp3",
+   "loopStart": 0.3,
+   "loopEnd": 36.3,
+   "bpm": 160
   }
  },
  "cues": {
@@ -166,6 +205,22 @@
   "gover": {
    "file": "gover.mp3",
    "len": 6.31
+  },
+  "wwave": {
+   "file": "wwave.mp3",
+   "len": 5.87
+  },
+  "wclear": {
+   "file": "wclear.mp3",
+   "len": 5.06
+  },
+  "baronwarn": {
+   "file": "baronwarn.mp3",
+   "len": 7.0
+  },
+  "wover": {
+   "file": "wover.mp3",
+   "len": 6.86
   }
  },
  "credit": "Instruments: FluidR3 GM soundfont by Frank Wen (CC BY 3.0)"

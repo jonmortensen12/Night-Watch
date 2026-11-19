@@ -220,6 +220,111 @@ export function sfx(key, pos, vol, pitch){
       tone(t, 'sine', 80, 30, 0.8, d, 1);
       break;
     }
+    /* ---------- the wagon ---------- */
+    case 'revolver': {
+      // a sharp crack with a body to it, and the canyon throwing it back
+      const d = out(pos, 0.6 * v);
+      noise(t, 0.09, d, 'highpass', 1800, 0, 0.7);
+      noise(t, 0.35, d, 'bandpass', 1400, 300, 0.9);
+      tone(t, 'triangle', 180, 55, 0.14, d, 0.8);
+      noise(t + 0.18, 0.4, d, 'bandpass', 900, 300, 1.2);
+      break;
+    }
+    case 'enemyGun': {
+      const d = out(pos, 0.45 * v);
+      noise(t, 0.3, d, 'bandpass', 1100, 250, 1);
+      tone(t, 'triangle', 140, 50, 0.12, d, 0.5);
+      break;
+    }
+    case 'ricochet': {
+      const d = out(pos, 0.3 * v);
+      tone(t + 0.04, 'sine', 3200 + Math.random() * 1200, 900, 0.32, d, 0.35);
+      noise(t, 0.04, d, 'bandpass', 4000, 0, 4);
+      break;
+    }
+    case 'spin': {
+      // the cylinder going round: a run of ticks
+      const d = out(pos, 0.35 * v);
+      for(let i = 0; i < 10; i++) tone(t + i * 0.055 * (1 + i * 0.06), 'square', 2600, 2400, 0.012, d, 0.3);
+      break;
+    }
+    case 'cock': {
+      const d = out(pos, 0.5 * v);
+      tone(t, 'square', 1800, 1400, 0.02, d, 0.5);
+      tone(t + 0.07, 'square', 1200, 900, 0.03, d, 0.6);
+      noise(t + 0.07, 0.03, d, 'bandpass', 3500, 0, 3);
+      break;
+    }
+    case 'dryfire': {
+      const d = out(pos, 0.4 * v);
+      tone(t, 'square', 2200, 1800, 0.015, d, 0.5);
+      break;
+    }
+    case 'fuse': {
+      const d = out(pos, 0.3 * v);
+      noise(t, 1.6, d, 'highpass', 5000, 7000, 0.8);
+      break;
+    }
+    case 'bigBlast': {
+      const d = out(pos, 1.0 * v);
+      noise(t, 2.2, d, 'lowpass', 3000, 60, 0.7);
+      tone(t, 'sine', 70, 25, 1.6, d, 1);
+      break;
+    }
+    case 'thump': {
+      const d = out(pos, 0.6 * v);
+      tone(t, 'sine', 110, 45, 0.25, d, 1);
+      noise(t, 0.12, d, 'lowpass', 600, 150, 1);
+      break;
+    }
+    case 'hoof': {
+      const d = out(pos, 0.5 * v);
+      for(const k of [0, 0.07]){ tone(t + k, 'sine', 160 + Math.random() * 40, 70, 0.06, d, 0.6); noise(t + k, 0.03, d, 'bandpass', 900, 0, 2); }
+      break;
+    }
+    case 'yell': {
+      // "yee-haw", more or less: a rough voice sliding up and over
+      const d = out(pos, 0.4 * v);
+      const o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+      o.type = 'sawtooth';
+      const f0 = (180 + Math.random() * 60) * pk;
+      o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f0 * 1.9, t + 0.18); o.frequency.linearRampToValueAtTime(f0 * 1.3, t + 0.45);
+      f.type = 'bandpass'; f.frequency.setValueAtTime(700, t); f.frequency.linearRampToValueAtTime(1400, t + 0.2); f.Q.value = 2.5;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      o.connect(f); f.connect(g); g.connect(d); o.start(t); o.stop(t + 0.55);
+      break;
+    }
+    case 'yelp': {
+      const d = out(pos, 0.45 * v);
+      tone(t, 'sawtooth', 520 * pk, 260, 0.22, d, 0.35);
+      noise(t, 0.25, d, 'bandpass', 1200, 400, 1.5);
+      break;
+    }
+    case 'squawk': {
+      const d = out(pos, 0.4 * v);
+      tone(t, 'sawtooth', 900, 500, 0.15, d, 0.4);
+      noise(t, 0.3, d, 'bandpass', 2500, 800, 2);
+      break;
+    }
+    case 'screech': {
+      const d = out(pos, 0.35 * v);
+      const o = AC.createOscillator(), g = AC.createGain(), f = AC.createBiquadFilter();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(1500, t); o.frequency.linearRampToValueAtTime(2100, t + 0.15); o.frequency.exponentialRampToValueAtTime(900, t + 0.7);
+      f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 4;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+      o.connect(f); f.connect(g); g.connect(d); o.start(t); o.stop(t + 0.8);
+      break;
+    }
+    case 'burner': {
+      const d = out(pos, 0.35 * v);
+      noise(t, 1.0, d, 'lowpass', 500, 300, 0.8);
+      break;
+    }
+    case 'rip': {
+      const d = out(pos, 0.5 * v);
+      for(let i = 0; i < 12; i++) noise(t + i * 0.03, 0.05, d, 'bandpass', 1500 + Math.random() * 1500, 0, 2);
+      break;
+    }
     case 'laser': {
       const d = out(pos, 0.16 * v);
       tone(t, 'sawtooth', 1500 + Math.random() * 200, 220, 0.12, d, 0.8);
@@ -327,11 +432,11 @@ export function musicThemes(mode){
 export function themeMode(key){ const m = MUSIC.man; return m && m.themes && m.themes[key] ? (m.themes[key].mode || 'space') : null; }
 /* What should be playing, for both pages: the lobby's loop or the chosen
    piece; the boss's loop; nothing on the results. kind: 'space' | 'zombie' |
-   'gameday' (the Bunker's BYU vs Utah look). */
+   'gameday' (the Bunker's BYU vs Utah look) | 'wagon'. */
 export function pick(kind, phase, theme, themePicked, boss){
   const own = theme && theme !== 'off' && themeMode(theme) === kind ? theme : null;
-  const LOBBY = {space: 'lobby', zombie: 'zlobby', gameday: 'globby'}, BOSS = {space: 'boss', zombie: 'witchboss', gameday: 'swoopboss'},
-    MAIN = {space: 'nightwatch', zombie: 'danse', gameday: 'pepband'};
+  const LOBBY = {space: 'lobby', zombie: 'zlobby', gameday: 'globby', wagon: 'wlobby'}, BOSS = {space: 'boss', zombie: 'witchboss', gameday: 'swoopboss', wagon: 'baronboss'},
+    MAIN = {space: 'nightwatch', zombie: 'danse', gameday: 'pepband', wagon: 'dustdevil'};
   if(phase === 'lobby') return own && themePicked ? own : LOBBY[kind];
   if(phase === 'over') return null;
   if(boss) return BOSS[kind];

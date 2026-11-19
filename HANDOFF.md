@@ -22,6 +22,7 @@ Fire-Stick-bound), a full working game. Working title.
 | `web/index.html` | The front page: a menu, Space or Bunker, play or show on a TV, print markers. |
 | `web/space/`, `web/bunker/` | Each game's own link. A phone goes to `play.html?game=…`, a big screen to `tv.html?game=…` (`?tv=1` makes a phone or tablet the TV). |
 | `web/party.html`, `web/gameday/` | The Game Day party printout: one QR code to `/gameday/?party=NAME`, which opens the Game Day Bunker in a fixed room with no codes and no markers. See "The party link" below. |
+| `web/wsim.js`, `web/trail.js`, `web/wagon-phone.js`, `web/wagon-tv.js`, `web/wagon/` | The Wagon (cowboy game): its simulation, its renderer, its phone controls and TV view, its link. See "The Wagon" below. |
 | `web/tv.html` | The TV. Hosts the room (or, with `?watch=CODE`, watches a phone's game), draws the battle, plays the music. `?game=` fixes the game. |
 | `web/play.html` | The phone. Joins a room, or hosts one itself ("START A GAME ON THIS PHONE"). `?game=` fixes the game. |
 | `web/markers/` | Printed markers, an option in both games: `kit.js` (the phone side), `markers.js` (find them), `room.js` (the survey, the boundary, finding yourself), `print.html`, `simcam.js` (a pretend camera for the checks). See "Printed markers" below. |
@@ -462,6 +463,109 @@ to `tv.html?...&tv=1`. Both use the fixed PeerJS id `party-NAME`:
 - Party pages hide the code box, "start a game on this phone", the look and
   the marker rows. LOCK FRONT is the only setup.
 - `node partycheck.mjs` runs all of this over `?local=1`.
+
+## The Wagon (`web/wsim.js`, `/wagon/`)
+
+Asked for 2026-11-19: "a cowboy one. Everyone sits in a line on the floor,
+and marks what position they are in before starting. We're on a wagon
+defending it from bandits ... a canyon ... the music should feel like an
+old western and everyone has revolvers ... enemies other than hiding behind
+rocks or riding up on horses? Does anything flying make sense?"
+
+**The idea.** The line of people on the floor, facing the TV, *is* the
+wagon's bench. Each phone picks its seat in the lobby (1 = the left end
+as the room faces the TV; `{t: 'seat', i}`, between games only; taking a
+taken seat swaps). Seats are only an order: 1, 3 and 6 are still a bench
+of three. The host spreads them across the bench (`seatX`: up to 0.75 m
+apart, 2.3 m in all), so each phone's eye is at its own place and a rider
+on the left really is nearer the left end. Setup is LOCK FRONT, as always
+(no markers: everybody sits still). Nobody walks.
+
+**The wagon stands still; the West goes by** at 9 m/s (`SPEED`). The
+simulation moves everything that belongs to the ground (rocks, crates)
+towards +z at that speed; `trail.js` scrolls its scenery the same way
+(strips of props and 40 m canyon-wall segments that wrap round) and the
+ground and road textures, so a bandit's rock stays put on the ground.
+
+**Stages** (`STAGES`), one a wave, then round again at dusk, harder:
+1. **Dusty Flats** - riders on the open plain, tumbleweeds.
+2. **Red Rock Canyon** - bandits behind boulders and up on the rim, dynamite throwers.
+3. **Vulture Gulch** - vultures circling overhead that dive for the cargo.
+4. **The Old Mine** - a timbered tunnel, dark but for lanterns: bat swarms, bandits in mine carts on rails alongside.
+5. **Gallows Gorge** - a trestle bridge over a river far below: rope bandits swing in from gallows posts, cliff throwers, vultures.
+6. **Outlaw's Pass** - sunset, the boss: **the Balloon Baron** in a patched hot-air balloon, dropping dynamite and sending his gang down ropes. Torn at 2/3 and 1/3.
+
+During the 10 s stop between stages the next stage's scenery comes up.
+Every stage also has a supply crate or two by the trail: shoot it, +15 to
+the wagon (a cleared stage gives +20).
+
+**Trouble** (`ENEMIES`): **riders** gallop up beside the wagon, keep pace
+and fire (a glint as they aim), and jump aboard if left alone ~15 s;
+**bandits** behind rocks pop up, aim (glint), fire and duck - only
+hittable while up; **dynamite** is thrown (or dropped by the Baron) in an
+arc and can be shot out of the air; **vultures** circle then dive and peck;
+**bats** flutter down the mine; **carts** keep pace on the mine rails and
+fire; **rope bandits** swing down and land on the wagon. Anybody aboard
+hurts the wagon steadily until shot off. The wagon has 100 health; at 0
+the gang gets the gold.
+
+**Revolvers** (`GUN`): six shots, 1 damage, 90 m. A tap is one shot (it
+fires on the press itself, so a quick tap is never lost to a slow frame);
+held, it fans the hammer at ~3/s. The phone counts its shots (`in.sh`) and
+the host fires once per new count, so the host fires exactly what the
+phone showed. Reload: **flick the phone** (`devicemotion` rotation rate
+over 560°/s), the cylinder button, or R; an empty gun reloads itself
+after 1.6 s. The phone defers to the host's count (`pl.am`) whenever it
+has not just fired.
+
+**On the phone**: the revolver in hand (it flips up and the cylinder spins
+to reload), the cylinder on the RELOAD button (brass = loaded, red and
+pulsing when empty), the wagon's health and the stage at the top, arrows
+at the edge for anything close or dangerous (red for dynamite, anybody
+aiming, aboard, diving), red arcs for where the wagon was hit from,
+callouts ("DYNAMITE - ahead left - shoot it!"). Friends on the bench are
+drawn see-through on a phone (they are right beside you).
+
+**On the TV**: over the wagon from behind and above, everybody in their
+seats in their colour, rings round anything urgent, the Baron's health,
+the wagon's health and the stage at the bottom, each player's seat and
+bullets on the scoreboard.
+
+**Sound**: revolver crack and echo, outlaws' shots with ricochets, the
+cylinder spin and the hammer cocking, fuse hiss, blasts, hooves, a
+"yee-haw" yell, vulture screech, the balloon's burner, cloth ripping.
+**Music** (new instruments in `samples.py`: steel and nylon guitar,
+harmonica, banjo, whistle, fiddle, honky-tonk piano, woodblock): **Dust
+Devil** (A minor gallop, 150 bpm: trumpet, strummed guitar on the gallop,
+woodblock hooves), **Lonesome Mesa** (D minor, 76: whistle over nylon
+guitar), **Saloon Shuffle** (G, 138: honky-tonk piano, banjo, fiddle),
+lobby **wlobby** (campfire guitar and harmonica), **baronboss** (D minor
+showdown, 160), cues **wwave** (a bugle call over the gallop), **wclear**
+("shave and a haircut" on the honky-tonk), **baronwarn**, **wover** (a
+sliding harmonica).
+
+**Tuning** (`simcheck`, computer gunslingers who see all round and tap ~4
+shots a second): one average ~wave 4-6, two ~5-6, four ~6, two good ~7;
+stages ~50-70 s. The Pass (wave 6) is where most average games end;
+good players get past the Baron.
+
+**Protocol additions**: phone -> host `in {a, tg, sh, rl}` (aim, pick,
+shot count, reload), `seat {i}`. Host -> phone `s` in wagon mode carries
+`hp`, `sg` (stage), `dist`, `m` (11 numbers a foe: id, type, x, y, z,
+facing, health %, state, aux - a progress % plus 1000 if on the left - vx,
+vz), `pl` (seat, rk, am, rl) and events `shot`, `hit`, `poof`, `bang`,
+`ouch`, `toss`, `blast`, `dive`, `swing`, `aboard`, `supplies`, `baron`,
+`crew`, `torn`, `barondown`, `loaded`.
+
+**Screenshots**: `node tools/wagonshots.mjs` puts every stage from a seat
+and from the TV, the outlaws lined up and the Baron in
+`shots/wagon-*.png` (`tools/wagongallery.html` runs the simulation in the
+page, no host).
+
+**Host fix found on the way**: a phone that went quiet for 6 s in the
+lobby was dropped and, coming back, could be given a different colour
+without being told - it then read somebody else's player (the wrong
+bullets, the wrong score). The host now says `you` again on every return.
 
 ## The page must never zoom
 

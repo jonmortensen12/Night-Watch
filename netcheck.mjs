@@ -215,7 +215,7 @@ ok(await until(ztv, () => NW_TV.state().mode === 'zombie'), 'a phone picks the b
 const zp = [fay, await phone(code3, 'Gus')];
 ok(await until(ztv, () => NW_TV.state().room.people.length === 2), 'two phones join a new room');
 ok(await until(ztv, () => NW_TV.state().mode === 'zombie', null, 2000), 'a phone joining without picking leaves the game alone');
-await until(zp[0], () => document.querySelectorAll('#modes button').length === 2, null, 5000);
+await until(zp[0], () => document.querySelectorAll('#modes button').length >= 2, null, 5000);
 await zp[0].click('#modes button[data-mode=zombie]');
 ok(await until(ztv, () => NW_TV.state().mode === 'zombie'), 'a phone switches the game to the bunker');
 ok(await until(zp[1], () => NW_TEST.mode() === 'zombie'), 'and every phone follows');
@@ -276,6 +276,59 @@ await zp[0].click('#lobbyBtn');
 ok(await until(ztv, () => NW_TV.state().phase === 'lobby'), 'LOBBY takes everybody back to the lobby');
 await zp[0].click('#modes button[data-mode=space]');
 ok(await until(ztv, () => NW_TV.state().mode === 'space'), 'back to space between games');
+
+console.log('the wagon');
+await zp[0].click('#modes button[data-mode=wagon]');
+ok(await until(ztv, () => NW_TV.state().mode === 'wagon'), 'a phone switches the game to the wagon');
+ok(await until(zp[1], () => NW_TEST.mode() === 'wagon'), 'and every phone follows');
+ok(await until(zp[1], () => [...document.querySelectorAll('#themes button')].some(b => b.dataset.key === 'dustdevil')), 'with western music to choose from');
+ok(await until(zp[0], () => document.querySelectorAll('#seats button').length >= 2 && getComputedStyle(document.getElementById('mkOpts')).display === 'none'), 'the lobby asks for a seat on the bench, and has no markers');
+const seatOf = n => ztv.evaluate(n => { const p = NW_TV.state().players.find(q => q.n === n); return p ? p.seat : 0; }, n);
+await until(ztv, () => { const ps = NW_TV.state().players || []; return ps.length === 2 && ps.every(p => p.seat > 0); });
+const fs0 = await seatOf('Fay');
+await zp[1].click('#seats button[data-seat="' + fs0 + '"]');
+ok(await until(ztv, f => NW_TV.state().players.find(q => q.n === 'Gus').seat === f, fs0), 'Gus takes Fay\'s seat, and they swap');
+ok(await until(ztv, () => { const ps = NW_TV.state().players, g = ps.find(q => q.n === 'Gus'), f = ps.find(q => q.n === 'Fay'); return (g.seat < f.seat) === (g.x < f.x); }), 'the lower seat sits further left on the bench');
+for(const p of zp) await p.click('#readyBtn');
+ok(await until(ztv, () => NW_TV.state().phase === 'wave', null, 12000), 'stage 1: the wagon is rolling');
+// a rider alongside, for Fay to shoot
+await ztv.evaluate(async () => {
+  const S = NW_TV.host().S, WG = await import('./wsim.js');
+  S.foes = []; S.plan.sent = 999;
+  WG.newFoe(S, 'rider', -5, 0, -6, {st: 'station', station: [-5, -6], fireT: 99, boardT: 99, side: -1});
+});
+let wk = 0;
+const w0 = Date.now();
+while(Date.now() - w0 < 30000 && !wk){
+  await zp[0].evaluate(() => {
+    const s = NW_TEST.w().state();
+    const f = s.foes.find(q => q.type === 'rider');
+    if(!f){ NW_TEST.w().fire(false); return; }
+    NW_TEST.aim(f.c[0] - s.x, f.c[1] - 2.2, f.c[2] - s.z);
+    NW_TEST.w().fire(true); NW_TEST.w().fire(false);
+  });
+  wk = (await ztv.evaluate(() => NW_TV.state().players)).reduce((a, p) => a + p.k, 0);
+  await wait(300);
+}
+ok(wk >= 1, 'a tap a shot: Fay knocks the rider\'s hat off');
+const am = await ztv.evaluate(() => NW_TV.state().players.find(q => q.n === 'Fay').am);
+ok(am < 6 && am >= 0, 'and the host counted her bullets (' + am + ' left)');
+await zp[0].evaluate(() => NW_TEST.w().reload());
+const reloaded = await until(ztv, () => NW_TV.state().players.find(q => q.n === 'Fay').am === 6, null, 6000);
+ok(reloaded, 'a flick (or the button) reloads all six' + (reloaded ? '' : ': ' + JSON.stringify(await zp[0].evaluate(() => { const s = NW_TEST.w().state(); return {ammo: s.ammo, reloading: s.reloading, phase: s.phase, me: NW_TEST.state().me}; })) + ' host ' + JSON.stringify(await ztv.evaluate(() => { const p = NW_TV.host().S.players; return Object.values(p).map(q => [q.name, q.color, q.ammo, q.rl, q.dry]); }))));
+await ztv.screenshot({path: 'shots/tv-wagon.png'});
+await zp[0].screenshot({path: 'shots/phone-wagon.png'});
+// losing the gold
+await ztv.evaluate(async () => {
+  const S = NW_TV.host().S, WG = await import('./wsim.js');
+  S.hp = 5;
+  WG.newFoe(S, 'dynamite', 0, 3, -3, {st: 'fall', x0: 0, y0: 3, z0: -3, tx: 0, ty: 1.3, tz: 0, fall: 0.3, t2: 0});
+});
+ok(await until(ztv, () => NW_TV.state().phase === 'over', null, 6000), 'dynamite on a wagon with nothing left ends it');
+ok(await until(zp[0], () => document.getElementById('overTitle').textContent === 'They got the gold!'), 'the phones say so');
+const wsub = await zp[1].evaluate(() => document.getElementById('overSub').textContent);
+ok(/Dynamite finished the wagon in (Dusty Flats|Red Rock Canyon), stage \d/.test(wsub), 'naming what did it, and where on the trail (' + wsub.split(',')[0] + ')');
+ok(await ztv.evaluate(() => /GOT THE GOLD/.test(document.getElementById('overTitle').textContent)), 'and so does the TV');
 
 console.log('');
 ok(errors.length === 0, 'no errors on any page' + (errors.length ? ':\n    ' + [...new Set(errors)].slice(0, 12).join('\n    ') : ''));

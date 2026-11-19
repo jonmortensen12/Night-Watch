@@ -21,8 +21,8 @@ Run the checks from the repo root.
 ## Before shipping
 
 ```
-node simcheck.mjs    # the simulations, headless: space, the bunker and the Haunted House, tuning with computer players
-node netcheck.mjs    # the TV and phones in Chromium over ?local=1: space, a phone-hosted game, then the bunker
+node simcheck.mjs    # the simulations, headless: space, the bunker, the Haunted House and the wagon, tuning with computer players
+node netcheck.mjs    # the TV and phones in Chromium over ?local=1: space, a phone-hosted game, the bunker, the wagon
 node markcheck.mjs   # printed markers with a pretend camera: Bunker walking a drawn boundary, Space facing the same way
 node partycheck.mjs  # the Game Day party link: first in hosts, the rest join, a TV hosts or watches
 node hauntcheck.mjs  # the shelved Haunted House (and the print page) with a pretend camera
@@ -34,8 +34,8 @@ python3 tools/samples.py && python3 tools/music.py   # re-render web/music/ afte
 (`web/ar/track.js`). It is a progress report, not a gate - see HANDOFF.md.
 Printed markers (`web/markers/`) are what the games use instead.
 
-`web/sim.js` (space) and `web/zsim.js` (the bunker, and the Haunted House
-given a room layout) decide everything that
+`web/sim.js` (space), `web/zsim.js` (the bunker, and the Haunted House
+given a room layout) and `web/wsim.js` (the wagon) decide everything that
 happens and draw nothing. Change the
 difficulty there and `simcheck` says whether the waves still last a
 sensible time with one, two and four players.
