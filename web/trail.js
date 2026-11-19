@@ -415,7 +415,7 @@ function buildFoe(type, T){
     for(const s of [-1, 1]) glow(0xff4030, 0.08, g, s * 0.035, 0.03, -0.09);
     U.wings = wings; U.flash = [body];
   } else if(type === 'swinger'){
-    // a leaping bandit: crouched on a rock pillar, then a jump for the wagon
+    // a rope bandit: on a rock pillar, rope in both hands, then a swing for the wagon
     const man = buildOutlaw({seed: Math.floor(Math.random() * 9), coat: 0x6a5040, gun: true});
     g.add(man);
     U = Object.assign(g.userData, {flash: man.userData.flash, man, hat: man.userData.hat, arms: man.userData.limbs.arms, legs: man.userData.limbs.legs});
@@ -955,7 +955,7 @@ export class Trail {
     this.groundTex.image = sandTex(P.ground, P.speck).image; this.groundTex.needsUpdate = true;
     this.ground.visible = st.key !== 'gorge';
     this.road.visible = st.key !== 'gorge';
-    this.far.visible = st.key !== 'mine';
+    this.far.visible = st.key !== 'mine' && st.key !== 'gorge';     // the gorge has no ground for them to stand on
     const show = {
       cactus: st.key === 'flats' || st.key === 'pass', brush: st.key !== 'mine' && st.key !== 'gorge', rocks: st.key !== 'mine' && st.key !== 'gorge',
       posts: st.key === 'flats' || st.key === 'pass', bones: st.key === 'gulch', timbers: st.key === 'mine', rails: st.key === 'mine',
@@ -1175,6 +1175,25 @@ export class Trail {
     }
     return best;
   }
+  /* A rock pillar out of the gorge for a rope bandit to stand on, with an
+     arm of rock overhanging the bridge side, high above him, where his rope
+     is tied. Its position is his feet; userData.tip is the rope's knot. */
+  ropePillar(feet){
+    const g = new THREE.Group(), s = feet.x < 0 ? -1 : 1, H = feet.y + 80;
+    part(g, new THREE.CylinderGeometry(1.1, 1.5, H, 7), this.T.rockMat, 0, -H / 2 - 0.05, 0);
+    // the spire behind him, and the overhang reaching out over the drop
+    const reach = Math.max(1.5, (Math.abs(feet.x) - 1.2) / 2);
+    part(g, new THREE.CylinderGeometry(0.7, 1.0, 9, 6), this.T.rockMat, s * 1.4, 4.4, 0);
+    const arm = part(g, new THREE.BoxGeometry(reach + 1.6, 0.9, 1.3), this.T.rockMat, s * 1.4 - s * (reach + 1.6) / 2, 8.5, 0);
+    arm.rotation.z = s * 0.06;
+    const tip = new THREE.Object3D();
+    tip.position.set(-s * reach, 8.0, 0);
+    g.add(tip);
+    g.userData.tip = tip;
+    g.position.copy(feet);
+    this.scene.add(g);
+    return g;
+  }
   /* a pillar some bandit is still standing on */
   foesOn(p){ for(const e of this.foes.values()) if(e.mesh.userData.pillar === p && e.st === 'wait') return true; return false; }
   canHit(e){ return !((e.type === 'bandit' || e.type === 'thrower') && e.st === 'hide' && e.rise < 0.5); }
@@ -1326,6 +1345,12 @@ export class Trail {
     const U = e.mesh.userData;
     switch(e.type){
       case 'bandit': case 'thrower': {
+        // up off the ground with no canyon rim to stand on (the gorge's
+        // cliff throwers): a rock pillar under him, so he is never seen in
+        // mid-air - and never dangling below his rock when he ducks
+        if(!U.column && e.d.y > 0.5 && this.key === 'gorge'){
+          U.column = part(e.mesh, new THREE.CylinderGeometry(1.5, 2.0, 90, 7), this.T.rockMat, 0, -45 - 0.2, 0.3);
+        }
         const up = e.st === 'up' ? 1 : 0;
         e.rise += (up - e.rise) * Math.min(1, dt * 9);
         U.lift.position.y = -1.5 + e.rise * 1.5;
@@ -1371,22 +1396,44 @@ export class Trail {
         break;
       }
       case 'swinger': {
-        // up high he always stands on a rock pillar of his own (never on
-        // nothing - nobody is ever seen dangling), which stays behind,
-        // going by with the land, when he jumps
-        if(e.st === 'wait' && !U.pillar && e.d.y > 1.5){
-          const h = e.d.y + 80;
-          U.pillar = part(this.scene, new THREE.CylinderGeometry(1.1, 1.5, h, 7), this.T.rockMat, e.d.x, e.d.y - h / 2 - 0.05, e.d.z);
+        /* A rope bandit, Tarzan-style. The rope is ALWAYS held in both hands
+           above his head and runs from his hands up to where it is tied - an
+           overhanging arm of his rock pillar, or the Baron's basket. Never
+           near the head or neck, nobody ever shown dangling, no gallows
+           (asked for: HANDOFF.md, "Nothing hanging"). Waiting, he stands on
+           top of his pillar; the pillar stays in the gorge as the land goes by. */
+        let balloon = null;
+        for(const o of this.foes.values()) if(o.type === 'balloon') balloon = o;
+        const nearBalloon = balloon && Math.hypot(balloon.d.x - e.d.x, balloon.d.z - e.d.z) < 6;
+        if(e.st === 'wait' && !U.pillar && e.d.y > 1.5 && !nearBalloon){
+          U.pillar = this.ropePillar(e.d);
           this.pillars.push(U.pillar);
         }
         if(U.pillar && e.st === 'wait') U.pillar.position.set(e.d.x, U.pillar.position.y, e.d.z);
-        const leap = e.st === 'swing', aboard = e.st === 'aboard';
-        // crouched and ready; arms up in the leap; fists up once aboard
-        U.man.position.y = e.st === 'wait' ? -0.25 : 0;
-        U.legs.forEach((l, i) => { l.rotation.x = e.st === 'wait' ? -0.7 : leap ? (i ? -1.1 : 0.6) : 0; });
-        U.arms[0].rotation.x = aboard ? -1.2 + Math.sin(t * 8) * 0.4 : leap ? -2.8 : -0.9;
-        U.arms[1].rotation.x = aboard ? -2.4 + Math.cos(t * 8) * 0.4 : leap ? -2.6 : -1.3;
-        e.mesh.rotation.x = leap ? -0.25 : 0;
+        const swing = e.st === 'swing', aboard = e.st === 'aboard';
+        // the rope: hands to anchor
+        const anchor = U.pillar && !aboard ? U.pillar.userData.tip.getWorldPosition(_v3) : balloon && !aboard && (U.fromBalloon || nearBalloon) ? _v3.copy(balloon.d).add(_v1.set(0, -1.7, 0)) : null;
+        if(balloon && nearBalloon) U.fromBalloon = true;
+        if(!U.rope){
+          U.rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 5).translate(0, 0.5, 0), mat(0x8a7a5a));
+          this.scene.add(U.rope);
+          e.onRemove = () => this.scene.remove(U.rope);
+        }
+        U.rope.visible = !!anchor;
+        if(anchor){
+          const hand = _v2.copy(e.d).add(_v1.set(0, 2.15, 0));
+          const d = _v1.subVectors(anchor, hand);
+          U.rope.position.copy(hand);
+          U.rope.scale.set(1, Math.max(0.01, d.length()), 1);
+          U.rope.quaternion.setFromUnitVectors(_v2.set(0, 1, 0), d.normalize());
+        }
+        // both hands up on the rope; legs out in the swing; fists up once aboard
+        U.man.position.y = 0;
+        U.arms[0].rotation.x = aboard ? -1.2 + Math.sin(t * 8) * 0.4 : Math.PI;
+        U.arms[1].rotation.x = aboard ? -2.4 + Math.cos(t * 8) * 0.4 : Math.PI;
+        U.arms[0].rotation.z = U.arms[1].rotation.z = 0;
+        U.legs.forEach(l => { l.rotation.x = swing ? -0.7 : 0; });
+        e.mesh.rotation.x = 0;
         break;
       }
       case 'balloon': {

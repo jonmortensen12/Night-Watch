@@ -653,7 +653,7 @@ console.log('the wagon: trouble');
   ok(B.foes.some(f => f.type === 'balloon'), 'wave 6, Outlaw\'s Pass: the Balloon Baron');
   let drops = 0, crew = 0;
   for(let i = 0; i < 60 * 40 && B.phase !== 'over'; i++){ WG.step(B, DT); B.hp = 100; drops += B.ev.filter(e => e[0] === 'toss').length; crew += B.ev.filter(e => e[0] === 'crew').length; B.ev = []; }
-  ok(drops >= 3 && crew >= 1, `he drops dynamite (${drops}) and his crew jump from the basket (${crew})`);
+  ok(drops >= 3 && crew >= 1, `he drops dynamite (${drops}) and sends his crew swinging down on ropes (${crew})`);
 }
 
 console.log('the wagon: whole games, computer gunslingers (tuning bounds)');

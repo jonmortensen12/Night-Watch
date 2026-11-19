@@ -44,7 +44,7 @@ export const STAGES = [
   {key: 'canyon', name: 'Red Rock Canyon', blurb: 'Bandits behind every rock',          walls: 13,  rim: 15, menu: [['bandit', 1], ['rimbandit', 1.5], ['thrower', 2], ['rider', 2]]},
   {key: 'gulch',  name: 'Vulture Gulch',   blurb: 'Something circling overhead',        walls: 10,  rim: 12, menu: [['vultures', 3], ['rimbandit', 1.5], ['thrower', 2]]},
   {key: 'mine',   name: 'The Old Mine',    blurb: 'Dark tunnels, bats and mine carts',  walls: 4.6, rim: 0,  tunnel: 6.5, menu: [['bats', 3], ['cart', 2]]},
-  {key: 'gorge',  name: "Hangman's Gorge", blurb: 'A long bridge, and bandits leaping from the rocks', walls: 0,  rim: 0,  bridge: true, menu: [['swinger', 2], ['vultures', 3], ['cliffthrower', 2]]},
+  {key: 'gorge',  name: "Hangman's Gorge", blurb: 'A long bridge, and bandits swinging in on ropes', walls: 0,  rim: 0,  bridge: true, menu: [['swinger', 2], ['vultures', 3], ['cliffthrower', 2]]},
   {key: 'pass',   name: "Outlaw's Pass",   blurb: 'The Balloon Baron himself',          walls: 16,  rim: 18, boss: true, menu: [['rider', 2], ['rimbandit', 1.5], ['thrower', 2]]},
 ];
 
@@ -57,7 +57,7 @@ export const ENEMIES = {
   vulture:  {hp: 1,  r: 0.7,  h: 0,   pts: 75,  name: 'vulture'},
   bat:      {hp: 1,  r: 0.45, h: 0,   pts: 50,  name: 'bat'},
   cart:     {hp: 4,  r: 0.8,  h: 1.3, pts: 150, name: 'mine cart'},
-  swinger:  {hp: 2,  r: 0.6,  h: 1.0, pts: 150, name: 'leaping bandit'},
+  swinger:  {hp: 2,  r: 0.6,  h: 1.0, pts: 150, name: 'rope bandit'},
   balloon:  {hp: 45, r: 3.2,  h: 0,   pts: 2500, name: 'Balloon Baron'},
   crate:    {hp: 1,  r: 0.6,  h: 0.4, pts: 0,   name: 'supply crate'},
   tumble:   {hp: 1,  r: 0.6,  h: 0.5, pts: 25,  name: 'tumbleweed'},
@@ -432,8 +432,8 @@ function foeStep(S, f, dt, d){
         f.t2 += dt;
         const k = Math.min(1, f.t2 / f.swing), e = k * k * (3 - 2 * k);
         f.x = f.x0 + (f.tx - f.x0) * e; f.z = f.z0 + (f.tz - f.z0) * e;
-        // a leap: up and over, and down onto the boards
-        f.y = f.y0 + (f.ty - f.y0) * e + Math.sin(k * Math.PI) * 2.5;
+        // a swing on a rope: down in an arc and up onto the boards
+        f.y = Math.max(f.ty, f.y0 + (f.ty - f.y0) * Math.sin(e * Math.PI / 2) - Math.sin(k * Math.PI) * 2.5);
         f.aux = k;
         if(k >= 1){ f.st = 'aboard'; f.x = f.tx; f.y = BED; f.z = f.tz; S.ev.push(['aboard', f.id, f.side]); }
       } else if(f.st === 'aboard') hurtWagonSlow(S, f, 6 * d.dmg, dt);

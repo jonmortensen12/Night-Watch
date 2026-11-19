@@ -26,10 +26,10 @@ export function createWagonTV(ctx){
     else if(k === 'toss'){ ctx.call('Dynamite - ' + sideWords(ev[1], ev[3]), '#ff5030'); SND.sfx('fuse', null, 0.4); }
     else if(k === 'blast') SND.sfx('blast', null, 0.7);
     else if(k === 'aboard') ctx.call('Bandit on the wagon - ' + (ev[2] < 0 ? 'left' : 'right') + ' side!', '#ff3a2a');
-    else if(k === 'swing'){ const e = trail.foes.get(ev[1]); ctx.call('Bandit jumping' + (e ? ' - ' + sideWords(e.d.x, e.d.z) : ''), '#ff8a50'); }
+    else if(k === 'swing'){ const e = trail.foes.get(ev[1]); ctx.call('Rope bandit' + (e ? ' - ' + sideWords(e.d.x, e.d.z) : ''), '#ff8a50'); }
     else if(k === 'supplies'){ const p = who(ev[1]); ctx.call((p ? p.n + ' shot the supply crate' : 'Supplies') + ' - the wagon is patched up', p ? COLORS[p.c] : '#60ff80'); SND.sfx('pickup', null, 0.5); }
     else if(k === 'baron'){ SND.cue('baronwarn'); ctx.banner('THE BALLOON BARON', 'Shoot the balloon down before he blows up the gold'); }
-    else if(k === 'crew') ctx.call('The Baron\'s gang are jumping for the wagon', '#ffb040');
+    else if(k === 'crew') ctx.call('The Baron\'s gang are swinging down on ropes', '#ffb040');
     else if(k === 'barondown'){ const p = who(ev[1]); ctx.banner('THE BARON IS DOWN!', p ? 'Final shot: ' + p.n : ''); SND.cue('victory'); }
     if(ctx.onEvent) ctx.onEvent(ev);
   };
