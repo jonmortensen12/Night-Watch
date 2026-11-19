@@ -282,13 +282,17 @@ await zp[0].click('#modes button[data-mode=wagon]');
 ok(await until(ztv, () => NW_TV.state().mode === 'wagon'), 'a phone switches the game to the wagon');
 ok(await until(zp[1], () => NW_TEST.mode() === 'wagon'), 'and every phone follows');
 ok(await until(zp[1], () => [...document.querySelectorAll('#themes button')].some(b => b.dataset.key === 'dustdevil')), 'with western music to choose from');
-ok(await until(zp[0], () => document.querySelectorAll('#seats button').length >= 2 && getComputedStyle(document.getElementById('mkOpts')).display === 'none'), 'the lobby asks for a seat on the bench, and has no markers');
+ok(await until(zp[0], () => document.querySelectorAll('#seats button').length === 12 && getComputedStyle(document.getElementById('mkOpts')).display === 'none'), 'the lobby asks where you sit on the wagon, and has no markers');
 const seatOf = n => ztv.evaluate(n => { const p = NW_TV.state().players.find(q => q.n === n); return p ? p.seat : 0; }, n);
 await until(ztv, () => { const ps = NW_TV.state().players || []; return ps.length === 2 && ps.every(p => p.seat > 0); });
 const fs0 = await seatOf('Fay');
 await zp[1].click('#seats button[data-seat="' + fs0 + '"]');
 ok(await until(ztv, f => NW_TV.state().players.find(q => q.n === 'Gus').seat === f, fs0), 'Gus takes Fay\'s seat, and they swap');
 ok(await until(ztv, () => { const ps = NW_TV.state().players, g = ps.find(q => q.n === 'Gus'), f = ps.find(q => q.n === 'Fay'); return (g.seat < f.seat) === (g.x < f.x); }), 'the lower seat sits further left on the bench');
+await zp[0].click('#seats button[data-seat="11"]');
+ok(await until(ztv, () => { const f = NW_TV.state().players.find(q => q.n === 'Fay'); return f.seat === 11 && f.x === 0 && f.z > 1; }), 'Fay moves to the back row, in the middle (seat 11 of 12)');
+ok(await until(zp[0], () => /back middle/.test(document.getElementById('seatLbl').textContent)), 'and her phone says where she is');
+await zp[0].screenshot({path: 'shots/phone-wagon-seats.png'});
 for(const p of zp) await p.click('#readyBtn');
 ok(await until(ztv, () => NW_TV.state().phase === 'wave', null, 12000), 'stage 1: the wagon is rolling');
 // a rider alongside, for Fay to shoot

@@ -472,14 +472,21 @@ defending it from bandits ... a canyon ... the music should feel like an
 old western and everyone has revolvers ... enemies other than hiding behind
 rocks or riding up on horses? Does anything flying make sense?"
 
-**The idea.** The line of people on the floor, facing the TV, *is* the
-wagon's bench. Each phone picks its seat in the lobby (1 = the left end
-as the room faces the TV; `{t: 'seat', i}`, between games only; taking a
-taken seat swaps). Seats are only an order: 1, 3 and 6 are still a bench
-of three. The host spreads them across the bench (`seatX`: up to 0.75 m
-apart, 2.3 m in all), so each phone's eye is at its own place and a rider
-on the left really is nearer the left end. Setup is LOCK FRONT, as always
-(no markers: everybody sits still). Nobody walks.
+**The idea.** The patch of floor the room sits on, facing the TV, *is* the
+wagon's bed. Seats are a grid **three across and four deep** (asked for
+2026-11-19: "both vertically and horizontally ... up to a 3x4 grid"):
+seat 1 front left as the room faces the TV, 3 front right, 4 second-row
+left ... 12 back right (`seatPos`, `seatName` - "back middle"). The lobby
+shows the grid with the TV at the top; each phone taps the spot it is
+sitting in (`{t: 'seat', i}`, between games only; taking a taken spot
+swaps). Seats are placed for real, 0.8 m apart across and 1.1 m front to
+back (rows at z = -1.75, -0.65, 0.45, 1.55), so somebody behind you on
+the floor is behind you on the wagon, and a rider on the left is nearer
+whoever sits on the left. The cargo and the gold ride behind the back row
+(the bed runs to z = 3.4), which is where the vultures dive. Friends are
+drawn see-through on a phone, each on a flour sack; empty spots are bare
+boards so the view is clear. Setup is LOCK FRONT, as always (no markers:
+everybody sits still). Nobody walks.
 
 **The wagon stands still; the West goes by** at 9 m/s (`SPEED`). The
 simulation moves everything that belongs to the ground (rocks, crates)
@@ -523,13 +530,13 @@ to reload), the cylinder on the RELOAD button (brass = loaded, red and
 pulsing when empty), the wagon's health and the stage at the top, arrows
 at the edge for anything close or dangerous (red for dynamite, anybody
 aiming, aboard, diving), red arcs for where the wagon was hit from,
-callouts ("DYNAMITE - ahead left - shoot it!"). Friends on the bench are
+callouts ("DYNAMITE - ahead left - shoot it!"). Friends on the wagon are
 drawn see-through on a phone (they are right beside you).
 
 **On the TV**: over the wagon from behind and above, everybody in their
-seats in their colour, rings round anything urgent, the Baron's health,
-the wagon's health and the stage at the bottom, each player's seat and
-bullets on the scoreboard.
+spots in their colour, rings round anything urgent, the Baron's health,
+the wagon's health and the stage at the bottom, each player's spot
+("second left") and bullets on the scoreboard.
 
 **Sound**: revolver crack and echo, outlaws' shots with ricochets, the
 cylinder spin and the hammer cocking, fuse hiss, blasts, hooves, a

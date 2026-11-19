@@ -136,10 +136,11 @@ body.mode-zombie #view, body.mode-zombie #hud, body.mode-zombie #missileBtn, bod
 body.mode-zombie #top { justify-content: space-between; }
 body.mode-wagon #view, body.mode-wagon #hud, body.mode-wagon #missileBtn, body.mode-wagon #fireBtn, body.mode-wagon #hullWrap { display: none !important; }
 body.mode-wagon #top { justify-content: space-between; }
-/* the wagon: which seat on the bench */
-#seats { display: flex; gap: 6px; flex-wrap: wrap; }
-#seats button { flex: 1 1 0; min-width: 44px; padding: 8px 2px; font-size: 12px; line-height: 1.15; }
-#seats button b { display: block; font-size: 18px; }
+/* the wagon: where you sit, a grid three across and four deep */
+#seats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 300px; margin: 0 auto; padding: 8px; border-radius: 12px; background: #3a2414aa; border: 2px solid #8a5a2a; }
+#seats .tvEdge { grid-column: 1 / -1; text-align: center; font: 800 11px system-ui; letter-spacing: 0.12em; color: #ffd890; }
+#seats button { height: 42px; padding: 2px; font-size: 12px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-style: dashed; }
+#seats button:not(:empty) { border-style: solid; }
 #seats button.mine { outline: 3px solid var(--gold); }
 .modes button { font-size: 15px; padding: 12px 10px; }
 </style>
@@ -215,7 +216,7 @@ body.mode-wagon #top { justify-content: space-between; }
     <button data-mode="wagon">🤠 WAGON</button>
   </div>
   <p class="sub" id="modeHelp" style="margin:6px 0 0"></p>
-  <label id="seatLbl" style="display:none">Your seat on the bench - left to right, facing the TV</label>
+  <label id="seatLbl" style="display:none">Where you sit on the wagon</label>
   <div id="seats" style="display:none"></div>
   <label id="lookLbl">Look</label>
   <div class="themes" id="lookOpts">
@@ -254,7 +255,7 @@ import {COLORS, LASER, MISSILE, TYPES} from './sim.js';
 import * as SND from './sound.js';
 import {createZombiePhone} from './zombie-phone.js';
 import {createWagonPhone} from './wagon-phone.js';
-import {awards as wAwards, STAGES as W_STAGES} from './wsim.js';
+import {awards as wAwards, STAGES as W_STAGES, seatName} from './wsim.js';
 import {awards as zAwards, SECTIONS, MONSTERS, ROOM, sectionsOf} from './zsim.js';
 import {createMarkerKit} from './markers/kit.js';
 import {insidePoly} from './markers/room.js';
@@ -521,7 +522,7 @@ if(PARTY){
 function paintPick(){
   [...$('pick').children].forEach(b => b.classList.toggle('sel', b.dataset.mode === pickMode));
   $('joinTag').textContent = pickMode === 'wagon'
-    ? 'Sit in a line on the floor: you are on a wagon full of gold, and the West wants it.'
+    ? 'Sit on the floor facing the TV: you are on a wagon full of gold, and the West wants it.'
     : pickMode === 'zombie'
     ? 'Hold the bunker. Monsters on every side. If one gets in, you lose.'
     : 'Your phone is a window into space. Find them. Shoot them.';
@@ -714,7 +715,7 @@ function enterGame(){
       ? 'Everyone points at the same TV, so you all share one sky. You can do this again any time with ⌖ FRONT.'
       : PARTY ? 'Everyone points at the same thing - the TV with the game on is perfect. That is FRONT. Re-do it any time with ⌖ FRONT.'
       : 'Agree on something in the room - a door, a lamp - and everyone points at it. That is FRONT. Re-do it any time with ⌖ FRONT.';
-    if(GAME === 'wagon' || pickMode === 'wagon') $('lockText').textContent = 'Sit in a line on the floor, side by side, all facing the ' + (roomTv ? 'TV' : 'same way') + ' - that is the front of the wagon. Point at it and tap LOCK FRONT, then pick your seat in the lobby. Re-do it any time with ⌖ FRONT.';
+    if(GAME === 'wagon' || pickMode === 'wagon') $('lockText').textContent = 'Sit on the floor, all facing the ' + (roomTv ? 'TV' : 'same way') + ' - up to three across and four rows deep. That is the front of the wagon. Point at it and tap LOCK FRONT, then tap your spot in the lobby. Re-do it any time with ⌖ FRONT.';
     if(/iPhone|iPad/.test(navigator.userAgent)) $('lockText').textContent += ' Tip: turn on Rotation Lock in Control Centre, or the screen flips when you look straight up.';
   }
   if(!PARTY) location.hash = code || '';
@@ -1033,7 +1034,7 @@ function drawRoom(){
   [...$('modes').children].forEach(b => b.classList.toggle('sel', b.dataset.mode === rm));
   drawSeats(rm);
   $('modeHelp').textContent = rm === 'wagon'
-    ? 'Everybody sits in a line on the floor, facing the TV, and says which seat they are in below. Turn to aim, tap to shoot. Six shots, then flick the phone to reload. Shoot the dynamite in the air!'
+    ? 'Everybody sits on the floor facing the TV - up to three across and four rows back - and taps their spot on the wagon below. Turn to aim, tap to shoot. Six shots, then flick the phone to reload. Shoot the dynamite in the air!'
     : rm === 'zombie'
     ? 'Monsters attack the bunker from every side. Walk with the stick, turn with your body, switch guns at the top. Stand at a damaged wall and hold REPAIR. If one gets in, you lose.'
     : 'Enemy ships all around you - above, behind, under the floor. Hold a finger to fire; hold your aim on one to lock a missile.';
@@ -1052,29 +1053,29 @@ function drawRoom(){
   }
   [...th.children].forEach(b => b.classList.toggle('sel', b.dataset.key === room.theme));
 }
-/* The wagon's bench: one button a seat, left to right as the room faces
-   the TV. The names show who is sitting where; tap yours. */
+/* The wagon's seats: a grid three across and four deep, laid out as the
+   room sits on the floor - the TV at the top, left on the left. The names
+   show who is sitting where; tap the spot you are in. */
 function drawSeats(rm){
   const on = rm === 'wagon';
   $('seatLbl').style.display = $('seats').style.display = on ? '' : 'none';
   if(!on || !S || !S.pl) return;
   const ps = S.pl.filter(p => !p.aw);
-  const n = Math.max(ps.length + 1, Math.max(0, ...ps.map(p => p.seat || 0)), 2);
-  const sig = n + '|' + ps.map(p => p.c + ':' + p.seat).join(',') + '|' + me.c;
+  const sig = ps.map(p => p.c + ':' + p.seat + ':' + p.n).join(',') + '|' + me.c;
   if($('seats').dataset.sig === sig) return;
   $('seats').dataset.sig = sig;
-  $('seats').innerHTML = '';
-  for(let i = 1; i <= Math.min(8, n); i++){
+  $('seats').innerHTML = '<div class="tvEdge">FRONT · THE TV</div>';
+  for(let i = 1; i <= 12; i++){
     const who = ps.find(p => p.seat === i);
     const b = document.createElement('button');
     b.dataset.seat = i;
-    b.innerHTML = '<b></b><span></span>';
-    b.querySelector('b').textContent = i;
-    b.querySelector('span').textContent = who ? who.n : 'empty';
+    b.textContent = who ? who.n : '';
     if(who){ b.style.color = COLORS[who.c]; b.style.borderColor = COLORS[who.c]; }
     if(who && who.c === me.c) b.classList.add('mine');
     $('seats').appendChild(b);
   }
+  const mine = ps.find(p => p.c === me.c);
+  $('seatLbl').textContent = 'Where you sit on the wagon' + (mine && mine.seat ? ' - ' + seatName(mine.seat) : '');
 }
 $('seats').addEventListener('click', e => {
   const b = e.target.closest('button');

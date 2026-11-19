@@ -9,7 +9,7 @@
    (tools/wagonshots.mjs).
    ?stage=0..5  which stage of the trail    ?lap=1   at dusk
    ?view=phone|tv   ?yaw=deg&pitch=deg   (phone: where it looks; 0 = FRONT, + = right)
-   ?seat=1..3   the phone's seat           ?t=seconds  run the stage this long first
+   ?seat=1..3   which of Ann, Bob, Cal this phone is   ?seats=1,5,12  where they sit           ?t=seconds  run the stage this long first
    ?put=rider,bandit,...  line some up for a portrait */
 import * as THREE from 'three';
 import {Trail} from '/web/trail.js';
@@ -19,6 +19,8 @@ const view = q.get('view') || 'phone';
 const trail = new Trail(document.getElementById('c'), {mode: view === 'tv' ? 'tv' : 'phone'});
 const S = WG.create(+(q.get('seed') || 4));
 ['Ann', 'Bob', 'Cal'].forEach((n, i) => WG.join(S, 'p' + i, n));
+// ?seats=1,5,12: where Ann, Bob and Cal sit on the wagon's grid
+(q.get('seats') || '').split(',').filter(Boolean).forEach((v, i) => WG.setSeat(S, 'p' + i, +v));
 const me = S.players['p' + ((+(q.get('seat') || 2)) - 1)];
 trail.setMe(me.color);
 WG.start(S);

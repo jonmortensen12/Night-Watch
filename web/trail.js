@@ -2,7 +2,8 @@
 
    The cowboy game's renderer, for both kinds of screen, built on the same
    pieces as the others (world.js's particles, beams and glows). A phone is
-   a first-person camera at its player's seat on the wagon's bench, turned
+   a first-person camera at its player's seat on the wagon (a grid of
+   twelve, three across and four deep), turned
    by the phone's sensors; the TV looks over the wagon from behind and
    above, so left on the TV is left in the room.
 
@@ -403,6 +404,8 @@ function buildPartner(color, name, ghost){
   const c = new THREE.Color(COLORS[color] || '#fff');
   const coat = new THREE.MeshStandardMaterial({color: c.clone().multiplyScalar(0.75), roughness: 0.7, emissive: c, emissiveIntensity: 0.1});
   part(g, new THREE.CylinderGeometry(0.2, 0.24, 0.62, 10), coat, 0, 0.36, 0);
+  // what they sit on: a sack of flour on the wagon bed
+  part(g, new THREE.CylinderGeometry(0.24, 0.27, 0.44, 10), mat(0xb8a078, 1), 0, -0.25, 0.05).scale.z = 0.8;
   for(const s of [-1, 1]) part(g, new THREE.CylinderGeometry(0.07, 0.07, 0.5, 8), mat(0x3a4a6a), s * 0.1, 0.05, -0.25, Math.PI / 2);
   const head = part(g, new THREE.SphereGeometry(0.14, 14, 10), mat(0xd8b090, 0.7), 0, 0.78, 0);
   const hat = buildHat(c.clone().multiplyScalar(0.55).getHex(), true);
@@ -753,9 +756,6 @@ export class Trail {
     for(const s of [-1, 1]) part(g, new THREE.BoxGeometry(0.08, 0.4, L), wood, s * hw, BED + 0.2, (WAGON.back + WAGON.front) / 2);
     part(g, new THREE.BoxGeometry(hw * 2, 0.4, 0.08), wood, 0, BED + 0.2, WAGON.back);
     part(g, new THREE.BoxGeometry(hw * 2, 0.45, 0.08), wood, 0, BED + 0.22, WAGON.front);
-    // the bench everybody sits on
-    part(g, new THREE.BoxGeometry(hw * 2 - 0.2, 0.1, 0.5), dark, 0, BED + 0.42, 0.25);
-    part(g, new THREE.BoxGeometry(hw * 2 - 0.2, 0.42, 0.08), dark, 0, BED + 0.21, 0.45);
     // wheels
     this.wheels = [];
     const wheel = (x, z, r) => {
@@ -766,22 +766,23 @@ export class Trail {
       w.userData.r = r;
       this.wheels.push(w);
     };
-    for(const s of [-1, 1]){ wheel(s * (hw + 0.08), -1.6, 0.6); wheel(s * (hw + 0.08), 1.6, 0.8); }
+    for(const s of [-1, 1]){ wheel(s * (hw + 0.08), -1.6, 0.6); wheel(s * (hw + 0.08), 2.3, 0.8); }
     // cargo: crates, barrels and the gold
     const crateMat = mat(0x9a6a3a, 0.85), barrel = mat(0x7a4a28, 0.8), hoop = mat(0x3a3a3a, 0.5, 0.5);
-    part(g, new THREE.BoxGeometry(0.8, 0.7, 0.7), crateMat, -0.6, BED + 0.35, 1.8);
-    part(g, new THREE.BoxGeometry(0.7, 0.55, 0.6), crateMat, -0.55, BED + 0.97, 1.8, 0, 0.2, 0);
-    for(const [x, z] of [[0.6, 1.9], [0.75, 1.1]]){
+    // behind the back row: what the gang is after
+    part(g, new THREE.BoxGeometry(0.8, 0.7, 0.7), crateMat, -0.75, BED + 0.35, 2.95);
+    part(g, new THREE.BoxGeometry(0.7, 0.55, 0.6), crateMat, -0.7, BED + 0.97, 2.95, 0, 0.2, 0);
+    for(const [x, z] of [[0.75, 2.95], [0.75, 2.35]]){
       part(g, new THREE.CylinderGeometry(0.3, 0.3, 0.8, 12), barrel, x, BED + 0.4, z);
       part(g, new THREE.TorusGeometry(0.3, 0.02, 4, 16), hoop, x, BED + 0.2, z, Math.PI / 2);
       part(g, new THREE.TorusGeometry(0.3, 0.02, 4, 16), hoop, x, BED + 0.6, z, Math.PI / 2);
     }
-    const box = pivot(g, 0, BED + 0.25, 1.15);
+    const box = pivot(g, 0, BED + 0.25, 2.9);
     part(box, new THREE.BoxGeometry(0.7, 0.4, 0.45), mat(0x2a3a5a, 0.6, 0.3), 0, 0, 0);
     part(box, new THREE.BoxGeometry(0.72, 0.06, 0.47), mat(0xd8b040, 0.3, 0.8), 0, 0.12, 0);
     const gold = part(box, new THREE.BoxGeometry(0.12, 0.12, 0.05), new THREE.MeshBasicMaterial({color: hot(0xffc040, 1.2)}), 0, 0, -0.24);
     this.goldBox = box;
-    // no driver: whoever sits at the left end of the bench has the reins tied off beside them
+    // no driver: the reins are tied off to the front board
     // the team: four horses
     this.team = [];
     for(const [x, z] of [[-0.75, -4.4], [0.75, -4.4], [-0.75, -6.9], [0.75, -6.9]]){
@@ -893,10 +894,10 @@ export class Trail {
       if(!a){
         const mesh = buildPartner(p.c, p.n, !this.tv);
         this.scene.add(mesh);
-        a = {mesh, x: p.x, aim: new THREE.Vector3(0, 0, -1)};
+        a = {mesh, x: p.x, z: p.z, aim: new THREE.Vector3(0, 0, -1)};
         this.partners.set(p.c, a);
       }
-      a.xT = p.x; a.aimT = p.a; a.f = p.f;
+      a.xT = p.x; a.zT = p.z; a.aimT = p.a; a.f = p.f;
     }
     for(const [c, a] of this.partners) if(!want.has(c)){ this.scene.remove(a.mesh); this.partners.delete(c); }
     for(const ev of s.ev || []) this.event(ev);
@@ -1102,7 +1103,7 @@ export class Trail {
     // dust off the wheels and hooves
     if(v > 1 && this.key !== 'gorge' && Math.random() < dt * 30){
       const dc = this.key === 'mine' ? [0.25, 0.2, 0.15] : [0.9, 0.75, 0.55];
-      const x = (Math.random() < 0.5 ? -1 : 1) * (WAGON.hw + 0.1), z = Math.random() < 0.6 ? 1.8 : -6 + Math.random() * 3;
+      const x = (Math.random() < 0.5 ? -1 : 1) * (WAGON.hw + 0.1), z = Math.random() < 0.6 ? 2.4 : -6 + Math.random() * 3;
       this.parts.emit(x, 0.15, z, (Math.random() - 0.5) * 0.6, 0.4 + Math.random() * 0.5, SPEED * 0.8, dc[0] * 0.35, dc[1] * 0.35, dc[2] * 0.35, 0.5, 1.4, 0.6, 2.5);
     }
 
@@ -1133,7 +1134,8 @@ export class Trail {
     // friends on the bench
     for(const a of this.partners.values()){
       a.x += (a.xT - a.x) * ease;
-      a.mesh.position.set(a.x, BED + 0.47, 0.25);
+      a.z += (a.zT - a.z) * ease;
+      a.mesh.position.set(a.x, BED + 0.47, a.z);
       if(a.aimT){
         _v1.set(a.aimT[0], a.aimT[1], a.aimT[2]);
         a.aim.lerp(_v1, ease).normalize();
@@ -1155,7 +1157,7 @@ export class Trail {
     this.hurtT = Math.max(0, this.hurtT - dt);
     // the TV: over the wagon from behind, drifting a little
     if(this.tv){
-      this.cam.position.set(Math.sin(t * 0.1) * 1.5, 7.5 + Math.sin(t * 0.13) * 0.4, 11.5);
+      this.cam.position.set(Math.sin(t * 0.1) * 1.5, 8.5 + Math.sin(t * 0.13) * 0.4, 12.5);
       this.cam.lookAt(0, 1.6, -10);
     }
     // the bits that fade

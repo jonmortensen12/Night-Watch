@@ -44,6 +44,8 @@ const SHOTS = {
   'critters':      ['stage=2&put=vulture,bat,dynamite,swinger,crate,tumble&yaw=0&pitch=4', 'wide'],
   'baron':         ['stage=5&put=balloon&yaw=0&pitch=22', 'phone'],
   'dusk-tv':       ['stage=1&lap=1&t=12&view=tv', 'tv'],
+  'grid-tv':       ['stage=0&t=14&view=tv&seats=1,6,11', 'tv'],
+  'grid-back':     ['stage=0&t=14&seats=1,6,11&seat=3&yaw=-15&pitch=-6', 'phone'],
 };
 const want = process.argv.slice(2);
 for(const [name, [qs, kind]] of Object.entries(SHOTS)){

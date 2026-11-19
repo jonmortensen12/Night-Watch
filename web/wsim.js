@@ -4,11 +4,11 @@
    host runs it without caring which game it is. Pure and deterministic;
    simcheck plays it with computer gunslingers.
 
-   The idea. The players sit in a line on the floor, side by side, facing
-   the TV - and that line is the bench of a freight wagon rolling through
-   the West. Each phone says which seat it is in (1 at the left as you face
-   the TV), so everybody's view starts from their own place on the bench
-   and the room shares one world: a rider coming up on the left really is
+   The idea. The players sit on the floor facing the TV, in rows - and
+   that patch of floor is the bed of a freight wagon rolling through the
+   West. Each phone says which seat it is in (a grid three across and
+   four deep, 1 front left as you face the TV), so everybody's view starts
+   from their own place on the wagon and the room shares one world: a rider coming up on the left really is
    nearer the left end of the line. The wagon is attacked from every side
    and from above, and if its health runs out the gang gets the gold.
 
@@ -28,10 +28,14 @@ export const PROTO = 1;
 export const SPEED = 9;               // the trail goes by at this, m/s
 export const BED = 1.0;               // the wagon bed's height
 export const EYE = BED + 1.2;         // sitting on its bench
-export const WAGON = {hw: 1.3, front: -2.4, back: 2.4};
+export const WAGON = {hw: 1.3, front: -2.4, back: 3.4};   // the gold and the cargo ride at the back, behind the seats
 export const HP_MAX = 100;
 export const COLORS = ['#4dd0ff', '#ffb000', '#ff5ca8', '#7cff6b', '#b388ff', '#ff7043', '#ffffff', '#00e5c0'];
-export const MAX_SEATS = 8;
+/* The seats: a grid on the wagon bed, three across and four deep - seat 1
+   is front left as the room faces the TV, 3 front right, 4 the second row's
+   left, ... 12 back right. */
+export const COLS = 3, ROWS = 4, MAX_SEATS = COLS * ROWS;
+const COL_X = 0.8, ROW_Z = [-1.75, -0.65, 0.45, 1.55];
 
 export const GUN = {rounds: 6, cool: 0.2, dmg: 1, range: 90, spread: 0.012, assist: 1.1, reload: 1.3, autoReload: 1.6};
 
@@ -91,18 +95,19 @@ export function sideWords(x, z){
   return a > 0 ? 'right' : 'left';
 }
 
-/* ---------- the bench ----------
-   Seats are places in the line, left to right as the room faces the TV.
-   They need not be 1, 2, 3: whoever says seat 1 and whoever says seat 4
-   sit at the two ends of a two-person bench. */
-export function seatX(rank, n){
-  if(n <= 1) return 0;
-  const gap = Math.min(0.75, 2.3 / (n - 1));
-  return (rank - (n - 1) / 2) * gap;
+/* ---------- the seats ----------
+   Where each seat is on the wagon bed: the room sits in the same grid on
+   the floor, so somebody behind you on the floor is behind you on the
+   wagon, and a rider on the left is nearer whoever sits on the left. */
+export function seatPos(seat){
+  const i = Math.max(1, Math.min(MAX_SEATS, seat | 0)) - 1, col = i % COLS, row = Math.floor(i / COLS);
+  return {x: (col - (COLS - 1) / 2) * COL_X, z: ROW_Z[row], col, row};
 }
+const ROW_NAME = ['front', 'second', 'third', 'back'], COL_NAME = ['left', 'middle', 'right'];
+export function seatName(seat){ const p = seatPos(seat); return ROW_NAME[p.row] + ' ' + COL_NAME[p.col]; }
 export function placeBench(S){
   const list = activePlayers(S).sort((a, b) => (a.seat - b.seat) || (a.color - b.color));
-  list.forEach((p, i) => { p.x = seatX(i, list.length); p.rank = i; });
+  list.forEach((p, i) => { const q = seatPos(p.seat); p.x = q.x; p.z = q.z; p.rank = i; });
 }
 
 /* ---------- the game ---------- */
@@ -320,7 +325,7 @@ function hurtWagon(S, dmg, f, why){
 }
 
 /* A point on the wagon somebody is aiming for. */
-function onWagon(S){ return [rr(S, -0.9, 0.9), BED + 0.3, rr(S, -1.8, 2)]; }
+function onWagon(S){ return [rr(S, -0.9, 0.9), BED + 0.3, rr(S, -2, 3.1)]; }
 
 function throwDynamite(S, from, fall){
   const to = onWagon(S);
@@ -380,7 +385,7 @@ function foeStep(S, f, dt, d){
         const sp = f.st === 'fly' ? 14 : 9;
         f.vx = dx / l * Math.min(sp, l * 3); f.vy = dy / l * Math.min(sp, l * 3); f.vz = dz / l * Math.min(sp, l * 3);
         if(l < 3) f.st = 'circle';
-        if(f.st === 'circle'){ f.timer -= dt; if(f.timer <= 0){ f.st = 'dive'; f.tgt = [rr(S, -0.8, 0.8), BED + 0.9, rr(S, 0.8, 2)]; S.ev.push(['dive', f.id]); } }
+        if(f.st === 'circle'){ f.timer -= dt; if(f.timer <= 0){ f.st = 'dive'; f.tgt = [rr(S, -0.8, 0.8), BED + 0.9, rr(S, 2.5, 3.1)]; S.ev.push(['dive', f.id]); } }
       } else if(f.st === 'dive'){
         const dx = f.tgt[0] - f.x, dy = f.tgt[1] - f.y, dz = f.tgt[2] - f.z, l = Math.hypot(dx, dy, dz) || 1;
         const sp = 7.5;

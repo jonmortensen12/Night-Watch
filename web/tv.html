@@ -130,8 +130,8 @@ button { font: inherit; font-weight: 800; color: #fff; background: linear-gradie
     <li>Stand at a damaged wall and <b>hold REPAIR</b>. If one gets in, you lose.</li>
   </ol>
   <ol id="howWagon" style="display:none">
-    <li><b>Sit in a line</b> on the floor, side by side, all facing this TV: that is the wagon's bench.</li>
-    <li><b>Scan</b> the code; <b>point at this TV</b> and tap LOCK FRONT. In the lobby, <b>tap your seat</b> - 1 is the left end.</li>
+    <li><b>Sit on the floor</b> facing this TV, up to three across and four rows deep: that is the wagon.</li>
+    <li><b>Scan</b> the code; <b>point at this TV</b> and tap LOCK FRONT. In the lobby, <b>tap your spot</b> on the wagon.</li>
     <li><b>Turn to aim, tap to shoot.</b> Six shots, then <b>flick the phone</b> to reload.</li>
     <li>Shoot the <b>dynamite</b> out of the air, and anybody who gets <b>on the wagon</b>.</li>
   </ol>
@@ -182,7 +182,7 @@ import {COLORS, awards, TYPES} from './sim.js';
 import * as SND from './sound.js';
 import {createZombieTV} from './zombie-tv.js';
 import {createWagonTV} from './wagon-tv.js';
-import {awards as wAwards, STAGES as W_STAGES, ENEMIES as W_ENEMIES} from './wsim.js';
+import {awards as wAwards, STAGES as W_STAGES, ENEMIES as W_ENEMIES, seatName as W_seatName} from './wsim.js';
 import {NAMES as GD_NAMES} from './gameday.js';
 import {awards as zAwards, SECTIONS, MONSTERS} from './zsim.js';
 
@@ -404,7 +404,7 @@ function board(){
     const h = d.querySelector('.heat i');
     if(mode === 'wagon'){
       h.parentNode.style.visibility = 'hidden';
-      d.querySelector('.mm').textContent = 'seat ' + (p.rk + 1) + ' · ' + (p.rl ? 'reloading' : '●'.repeat(Math.max(0, p.am)));
+      d.querySelector('.mm').textContent = W_seatName(p.seat) + ' · ' + (p.rl ? 'reloading' : '●'.repeat(Math.max(0, p.am)));
     } else if(mode === 'zombie'){
       h.parentNode.style.visibility = 'hidden';
       d.querySelector('.mm').textContent = p.r && p.fx >= 0 ? '🔨 ' + SECTIONS[p.fx].name : ['🔫 pistol', '💥 shotgun', '🎯 sniper'][p.w] || '';

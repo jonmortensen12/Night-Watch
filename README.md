@@ -22,10 +22,10 @@ between a pistol, a shotgun and a sniper rifle with a scope, and hold
 REPAIR at the walls they have battered. If one gets in, you lose. No
 blood — they go poof.
 
-**Wagon**: everyone sits in a line on the floor, facing the TV - that is
-the bench of a wagon full of gold rolling through the West: the flats, a
+**Wagon**: everyone sits on the floor facing the TV - up to three across
+and four rows deep - and that is the bed of a wagon full of gold rolling through the West: the flats, a
 red-rock canyon, Vulture Gulch, an old mine, a bridge over a gorge, and
-the Balloon Baron at Outlaw's Pass. Pick your seat, turn to aim, tap to
+the Balloon Baron at Outlaw's Pass. Tap your spot on the wagon, turn to aim, tap to
 fire your revolver, flick the phone to reload. Shoot the dynamite out of
 the air.
 
