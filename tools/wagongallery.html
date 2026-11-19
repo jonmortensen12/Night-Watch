@@ -32,7 +32,7 @@ const put = (q.get('put') || '').split(',').filter(Boolean);
 if(put.length){
   S.foes = []; S.plan.sent = 999;
   put.forEach((k, i) => {
-    const x = (i - (put.length - 1) / 2) * 3.2, z = -9 - (i % 2) * 2;
+    const x = (i - (put.length - 1) / 2) * 4.2 + (i < put.length / 2 ? -1.5 : 1.5), z = -11 - (i % 2) * 3;
     if(k === 'rider') WG.newFoe(S, 'rider', x, 0, z, {st: 'aim', station: [x, z], fireT: 99, boardT: 99, timer: 99, aux: 0.7, side: x < 0 ? -1 : 1});
     else if(k === 'bandit' || k === 'thrower') WG.newFoe(S, k, x, 0, z - 2, {st: 'up', timer: 99, aux: 0.8, side: 1});
     else if(k === 'vulture') WG.newFoe(S, 'vulture', x, 3.5, z, {st: 'dive', tgt: [x, 3.5, z], side: 1});

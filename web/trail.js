@@ -24,8 +24,65 @@ import {UnrealBloomPass} from './lib/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from './lib/postprocessing/OutputPass.js';
 import {Particles, Beam, glowTex, canvasTex, textSprite, hot} from './world.js';
 import {ENEMIES, ENEMY_LIST, STATES, STAGES, SPEED, EYE, BED, WAGON, COLORS, GUN, centre} from './wsim.js';
+import * as M from './models.js';
 
-const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
+/* Quaternius's CC0 models (web/models/, ASSETS.md), once loaded: name ->
+   loaded model. Until then (or if one fails) everything is drawn the
+   home-made way below, so the game never waits on them. */
+const MODEL_NAMES = ['Horse', 'Horse_White', 'Revolver', 'Cactus_1', 'Cactus_2', 'Cactus_3', 'Cactus_4', 'Cactus_5',
+  'Rock_1', 'Rock_2', 'Rock_3', 'Rock_4', 'Rock_5', 'Rock_6', 'Rock_7', 'DeadTree_1', 'DeadTree_2', 'Bush',
+  'Barrel', 'Crate', 'Bones', 'Skull', 'TreeStump', 'WoodLog'];
+const MOD = {};
+let modelsAsked = null;
+function askModels(){
+  if(!modelsAsked) modelsAsked = M.preload(MODEL_NAMES).then(list => { MODEL_NAMES.forEach((n, i) => { if(list[i]) MOD[n] = list[i]; }); return MOD; });
+  return modelsAsked;
+}
+const pickOf = names => { const have = names.filter(n => MOD[n]); return have.length ? MOD[have[Math.floor(Math.random() * have.length)]] : null; };
+const ROCKS = ['Rock_1', 'Rock_2', 'Rock_3', 'Rock_4', 'Rock_5', 'Rock_6', 'Rock_7'];
+/* the nature pack's rocks are grey granite: here they are red sandstone */
+const SANDSTONE = new THREE.Color(0xc8774a);
+function sandstone(obj, tint){
+  M.ownMaterials(obj);
+  for(const mt of M.materials(obj)) if(mt.color) mt.color.copy(tint || SANDSTONE);
+  return obj;
+}
+/* A Quaternius horse, galloping. It faces +z in the file (glTF's way); here everything faces -z. */
+const HORSE_H = 1.7, HORSE_BACK = 1.15;
+function modelHorse(kind){
+  const m = kind === 'white' ? MOD.Horse_White : MOD.Horse;
+  if(!m) return null;
+  const h = M.makeNow(m, {height: HORSE_H, rotY: Math.PI});
+  if(kind === 'dark' || kind === 'pale'){
+    M.ownMaterials(h);
+    for(const mt of M.materials(h)) if(mt.color && /Main|Hair/.test(mt.name)) mt.color.multiplyScalar(kind === 'dark' ? 0.32 : 1.6);
+  }
+  h.userData.play('Gallop', 1.1);
+  h.userData.mixer.update(Math.random() * 2);
+  h.userData.flash = M.materials(h).filter(mt => mt.emissive);
+  return h;
+}
+/* A rock of the size asked for, whatever shape the file's rock is. */
+function boulder(m, w, h, d){
+  const o = sandstone(M.makeNow(m, {height: h}));
+  o.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(o), sz = b.getSize(new THREE.Vector3());
+  o.scale.set(w / sz.x, 1, d / sz.z);
+  return o;
+}
+/* The revolver from Quaternius's survival pack: barrel along +x in the file. */
+function modelRevolver(len){
+  if(!MOD.Revolver) return null;
+  const g = M.makeNow(MOD.Revolver, {width: len, rotY: Math.PI / 2});
+  g.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(g);
+  g.position.y = -(b.min.y + b.max.y) / 2;
+  g.userData.muzzle = new THREE.Vector3(0, g.position.y + b.max.y - (b.max.y - b.min.y) * 0.18, b.min.z);
+  g.userData.cyl = new THREE.Object3D();
+  return g;
+}
+
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _gunHome = new THREE.Vector3(0.17, -0.17, -0.34);
 const ST = n => STATES[n] || 'ride';
 
 /* ---------- materials and shapes ---------- */
@@ -194,6 +251,8 @@ function buildHat(color, wide){
   return g;
 }
 function buildRevolver(scale){
+  const real = modelRevolver(0.26 * (scale || 1));
+  if(real) return real;
   const g = new THREE.Group();
   const steel = mat(0x4a4e56, 0.45, 0.6), dark = mat(0x22242a, 0.6, 0.4), grip = mat(0x6a3a1a, 0.55);
   part(g, new THREE.CylinderGeometry(0.011, 0.011, 0.19, 10), steel, 0, 0.012, -0.12, Math.PI / 2);
@@ -286,8 +345,10 @@ function buildFoe(type, T){
   };
   if(type === 'bandit' || type === 'thrower'){
     // his rock, and him behind it: he rises to shoot, ducks to hide
-    const rock = part(g, rockGeo(1.1, 7 + Math.floor(Math.random() * 50), 0.85), T.rockMat, 0, 0.35, 0);
-    rock.scale.set(1.25, 1, 0.9);
+    let rock;
+    const rm = pickOf(ROCKS);
+    if(rm){ rock = boulder(rm, 2.1, 1.45, 1.3); rock.position.y = -0.08; g.add(rock); }
+    else { rock = part(g, rockGeo(1.1, 7 + Math.floor(Math.random() * 50), 0.85), T.rockMat, 0, 0.35, 0); rock.scale.set(1.25, 1, 0.9); }
     const man = buildOutlaw({coat: type === 'thrower' ? 0x3a3a48 : 0x5a4430, shirt: type === 'thrower' ? 0x405a80 : 0x8a2a20,
       dynamite: type === 'thrower', gun: type !== 'thrower', seed: Math.floor(Math.random() * 9)});
     const lift = pivot(g, 0, 0, 0.55);
@@ -299,7 +360,7 @@ function buildFoe(type, T){
   } else if(type === 'rider' || type === 'cart'){
     let mount;
     if(type === 'rider'){
-      mount = buildHorse([0x6a4026, 0x2a1e18, 0x9a7050, 0xd8d0c0][Math.floor(Math.random() * 4)]);
+      mount = modelHorse(['brown', 'dark', 'white', 'brown'][Math.floor(Math.random() * 4)]) || buildHorse([0x6a4026, 0x2a1e18, 0x9a7050, 0xd8d0c0][Math.floor(Math.random() * 4)]);
       g.add(mount);
     } else {
       mount = new THREE.Group();
@@ -312,7 +373,8 @@ function buildFoe(type, T){
       g.add(mount);
     }
     const man = buildOutlaw({seed: Math.floor(Math.random() * 9), coat: type === 'cart' ? 0x4a3a2a : 0x5a4430});
-    man.position.set(0, type === 'rider' ? 0.75 : 0.25, type === 'rider' ? 0.05 : 0.1);
+    const real = !!mount.userData.mixer;
+    man.position.set(0, type === 'rider' ? (real ? HORSE_BACK - 0.85 : 0.75) : 0.25, type === 'rider' ? (real ? 0.1 : 0.05) : 0.1);
     if(type === 'rider') man.userData.limbs.legs.forEach((l, i) => { l.rotation.z = (i ? 1 : -1) * 0.5; l.rotation.x = -0.4; });
     g.add(man);
     U = Object.assign(g.userData, {flash: man.userData.flash.concat(mount.userData.flash), man, mount, hat: man.userData.hat, arms: man.userData.limbs.arms});
@@ -386,7 +448,11 @@ function buildFoe(type, T){
     U.flame = glow(0xffa040, 1.6, g, 0, -0.5, 0);
     U.envelope = envelope; U.flash = [cloth]; U.baron = baron;
   } else if(type === 'crate'){
-    part(g, new THREE.BoxGeometry(0.8, 0.8, 0.8), mat(0xffffff, 0.8, 0, {map: T.crate}), 0, 0.4, 0);
+    if(MOD.Crate){
+      g.add(M.makeNow(MOD.Crate, {height: 0.8}));
+      const cross = new THREE.MeshBasicMaterial({color: 0xd02020});
+      for(const r of [0, Math.PI / 2]) part(g, new THREE.BoxGeometry(0.42, 0.12, 0.02), cross, 0, 0.42, 0.42, 0, 0, r);
+    } else part(g, new THREE.BoxGeometry(0.8, 0.8, 0.8), mat(0xffffff, 0.8, 0, {map: T.crate}), 0, 0.4, 0);
     U.beacon = glow(0x60ff80, 1.2, g, 0, 1.3, 0);
     U.flash = [];
   } else if(type === 'tumble'){
@@ -519,6 +585,7 @@ export class Trail {
     this._resize = () => this.resize();
     addEventListener('resize', this._resize);
     this.setStage(0, 0, true);
+    askModels().then(() => this.useModels());
     if(this.tv){ this.cam.position.set(0, 7.5, 12); this.cam.lookAt(0, 1.5, -10); }
   }
 
@@ -770,12 +837,14 @@ export class Trail {
     // cargo: crates, barrels and the gold
     const crateMat = mat(0x9a6a3a, 0.85), barrel = mat(0x7a4a28, 0.8), hoop = mat(0x3a3a3a, 0.5, 0.5);
     // behind the back row: what the gang is after
-    part(g, new THREE.BoxGeometry(0.8, 0.7, 0.7), crateMat, -0.75, BED + 0.35, 2.95);
-    part(g, new THREE.BoxGeometry(0.7, 0.55, 0.6), crateMat, -0.7, BED + 0.97, 2.95, 0, 0.2, 0);
+    const cargo = this.cargo = new THREE.Group();
+    g.add(cargo);
+    part(cargo, new THREE.BoxGeometry(0.8, 0.7, 0.7), crateMat, -0.75, BED + 0.35, 2.95);
+    part(cargo, new THREE.BoxGeometry(0.7, 0.55, 0.6), crateMat, -0.7, BED + 0.97, 2.95, 0, 0.2, 0);
     for(const [x, z] of [[0.75, 2.95], [0.75, 2.35]]){
-      part(g, new THREE.CylinderGeometry(0.3, 0.3, 0.8, 12), barrel, x, BED + 0.4, z);
-      part(g, new THREE.TorusGeometry(0.3, 0.02, 4, 16), hoop, x, BED + 0.2, z, Math.PI / 2);
-      part(g, new THREE.TorusGeometry(0.3, 0.02, 4, 16), hoop, x, BED + 0.6, z, Math.PI / 2);
+      part(cargo, new THREE.CylinderGeometry(0.3, 0.3, 0.8, 12), barrel, x, BED + 0.4, z);
+      part(cargo, new THREE.TorusGeometry(0.3, 0.02, 4, 16), hoop, x, BED + 0.2, z, Math.PI / 2);
+      part(cargo, new THREE.TorusGeometry(0.3, 0.02, 4, 16), hoop, x, BED + 0.6, z, Math.PI / 2);
     }
     const box = pivot(g, 0, BED + 0.25, 2.9);
     part(box, new THREE.BoxGeometry(0.7, 0.4, 0.45), mat(0x2a3a5a, 0.6, 0.3), 0, 0, 0);
@@ -785,17 +854,80 @@ export class Trail {
     // no driver: the reins are tied off to the front board
     // the team: four horses
     this.team = [];
-    for(const [x, z] of [[-0.75, -4.4], [0.75, -4.4], [-0.75, -6.9], [0.75, -6.9]]){
+    for(const [x, z] of [[-0.8, -5.2], [0.8, -5.2], [-0.8, -7.9], [0.8, -7.9]]){
       const h = buildHorse([0x7a4a2a, 0x5a3420, 0x8a5a3a, 0x3a2418][this.team.length]);
       h.position.set(x, 0, z);
       h.userData.ph = Math.random();
       g.add(h); this.team.push(h);
     }
-    part(g, new THREE.BoxGeometry(0.12, 0.12, 5), dark, 0, 1.0, -4.8);     // the tongue
+    part(g, new THREE.BoxGeometry(0.12, 0.12, 6), dark, 0, 1.0, -5.4);     // the tongue
     // reins
     const rein = mat(0x3a2a1a);
-    for(const s of [-1, 1]) part(g, new THREE.CylinderGeometry(0.012, 0.012, 3.4, 4), rein, s * 0.4, 1.55, -4.0, Math.PI / 2 - 0.1);
+    for(const s of [-1, 1]) part(g, new THREE.CylinderGeometry(0.012, 0.012, 3.6, 4), rein, s * 0.4, 1.5, -4.2, Math.PI / 2 - 0.08);
     this.scene.add(g);
+  }
+
+  /* ---------- the real models, once they have loaded ---------- */
+  useModels(){
+    // the team: four galloping horses in place of the home-made ones
+    if(MOD.Horse){
+      this.team = this.team.map((h, i) => {
+        const real = modelHorse(['brown', 'dark', 'brown', 'pale'][i]);
+        if(!real) return h;
+        real.position.copy(h.position);
+        real.userData.ph = h.userData.ph;
+        this.wagon.remove(h); this.wagon.add(real);
+        return real;
+      });
+    }
+    // what is going by
+    const refill = (key, make) => {
+      const st = this.strips[key];
+      if(!st) return;
+      for(const o of st.items){
+        const m = make();
+        if(!m) return;
+        o.clear(); o.add(m);
+      }
+    };
+    refill('cactus', () => { const m = pickOf(['Cactus_2', 'Cactus_3', 'Cactus_4', 'Cactus_5', 'Cactus_3']); return m && M.makeNow(m, {height: 2.2 + Math.random() * 3.2}); });
+    refill('rocks', () => { const m = pickOf(ROCKS); return m && sandstone(M.makeNow(m, {height: 0.6 + Math.random() * 2.2})); });
+    const sage = new THREE.Color(0x9aa070);
+    refill('brush', () => MOD.Bush && sandstone(M.makeNow(MOD.Bush, {height: 0.4 + Math.random() * 0.5}), sage));
+    refill('bones', () => { const m = pickOf(['Bones', 'Skull', 'Bones']); return m && M.makeNow(m, {height: m === MOD.Skull ? 0.35 : 0.3}); });
+    // dead trees: the gulch, the flats and the pass
+    if(MOD.DeadTree_1 || MOD.DeadTree_2){
+      const g = new THREE.Group(), items = [], LEN = 320, FROM = -260, n = 16;
+      for(let i = 0; i < n; i++){
+        const o = new THREE.Group();
+        const m = pickOf(['DeadTree_1', 'DeadTree_2', 'TreeStump']);
+        o.add(M.makeNow(m, {height: m === MOD.TreeStump ? 0.7 : 3 + Math.random() * 3}));
+        o.userData.z0 = FROM + (i + Math.random() * 0.8) * LEN / n;
+        o.position.x = (Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 30);
+        o.rotation.y = Math.random() * 6;
+        g.add(o); items.push(o);
+      }
+      this.scene.add(g);
+      this.strips.trees = {g, items, LEN, FROM};
+    }
+    // the cargo: real crates and barrels
+    if(MOD.Crate && MOD.Barrel){
+      this.cargo.clear();
+      const put = (name, h, x, y, z, ry) => { const o = M.makeNow(MOD[name], {height: h}); o.position.set(x, y, z); o.rotation.y = ry || 0; this.cargo.add(o); };
+      put('Crate', 0.7, -0.75, BED, 2.95); put('Crate', 0.55, -0.7, BED + 0.7, 2.95, 0.3);
+      put('Barrel', 0.85, 0.75, BED, 2.95); put('Barrel', 0.85, 0.75, BED, 2.35, 1);
+    }
+    // the gun in this player's hand
+    if(this.gun && MOD.Revolver){
+      const real = modelRevolver(0.2);
+      this.cam.remove(this.gun);
+      this.gun = real; this.gun.position.set(0.17, -0.17, -0.34);
+      this.gunHome = new THREE.Vector3(0.19, -0.2, -0.4);
+      this.cam.add(this.gun);
+    }
+    // show what this stage shows
+    const k = this.stage, l = this.lap;
+    this.stage = -1; this.setStage(k, l, true);
   }
 
   /* ---------- the stage: which scenery, which sky ---------- */
@@ -829,14 +961,14 @@ export class Trail {
     const show = {
       cactus: st.key === 'flats' || st.key === 'pass', brush: st.key !== 'mine' && st.key !== 'gorge', rocks: st.key !== 'mine' && st.key !== 'gorge',
       posts: st.key === 'flats' || st.key === 'pass', bones: st.key === 'gulch', timbers: st.key === 'mine', rails: st.key === 'mine',
-      bridge: st.key === 'gorge', gallows: st.key === 'gorge',
+      bridge: st.key === 'gorge', gallows: st.key === 'gorge', trees: st.key === 'gulch' || st.key === 'pass' || st.key === 'flats',
     };
     for(const k in this.strips) this.strips[k].g.visible = !!show[k];
     for(const k in this.walls) this.walls[k].g.visible = k === st.key;
     this.river.visible = st.key === 'gorge';
     this.ceiling.visible = st.key === 'mine';
     this.lantern.intensity = st.key === 'mine' ? 14 : dusk > 0.5 ? 6 : 0;
-    if(this.torch) this.torch.intensity = st.key === 'mine' ? 40 : 0;
+    if(this.torch) this.torch.intensity = st.key === 'mine' ? 16 : 0;
     this.mineLights.forEach(l => { l.intensity = st.key === 'mine' ? 26 : 0; });
     this.key = st.key;
     if(!now) this.fade = 1;
@@ -1097,7 +1229,14 @@ export class Trail {
 
     // the wagon and the team
     for(const w of this.wheels) w.rotation.x -= v * dt / w.userData.r;
-    for(const h of this.team){ gallop(h, t + h.userData.ph, v > 1 ? 1 : 0.15); h.position.y = v > 1 ? Math.abs(Math.sin((t + h.userData.ph) * 11)) * 0.06 : 0; }
+    for(const h of this.team){
+      if(h.userData.mixer){
+        h.userData.play(v > 3 ? 'Gallop' : v > 0.5 ? 'Walk' : 'Idle', v > 3 ? 1.1 : 1);
+        h.userData.mixer.update(dt);
+        continue;
+      }
+      gallop(h, t + h.userData.ph, v > 1 ? 1 : 0.15); h.position.y = v > 1 ? Math.abs(Math.sin((t + h.userData.ph) * 11)) * 0.06 : 0;
+    }
     this.wagon.position.y = v > 1 ? Math.sin(t * 13) * 0.015 : 0;
     this.wagon.rotation.z = v > 1 ? Math.sin(t * 2.3) * 0.006 : 0;
     // dust off the wheels and hooves
@@ -1148,7 +1287,8 @@ export class Trail {
       this.recoil = Math.max(0, this.recoil - dt * 7);
       const rl = this.reload ? 1 : 0;
       this.spin += ((rl ? 1 : 0) - this.spin) * Math.min(1, dt * 10);
-      this.gun.position.set(0.17, -0.17 + this.recoil * 0.02 + this.spin * 0.05, -0.34 + this.recoil * 0.05);
+      const home = this.gunHome || _gunHome;
+      this.gun.position.set(home.x, home.y + this.recoil * 0.02 + this.spin * 0.05, home.z + this.recoil * 0.05);
       this.gun.rotation.set(this.recoil * 0.4 + this.spin * 0.9, 0, this.spin * 0.6);
       if(this.reload) this.gun.userData.cyl.rotation.y += dt * 20;
       if(this.flashT > 0){ this.flashT -= dt; if(this.flashT <= 0){ this.muzzleFlash.visible = false; this.flashLight.intensity = 0; } }
@@ -1192,7 +1332,7 @@ export class Trail {
         break;
       }
       case 'rider': case 'cart': {
-        if(e.type === 'rider') gallop(U.mount, t + e.ph, 1);
+        if(e.type === 'rider'){ if(U.mount.userData.mixer) U.mount.userData.mixer.update(dt); else gallop(U.mount, t + e.ph, 1); }
         else for(const w of U.mount.userData.wheels) w.rotation.y += dt * 10;
         const aiming = e.st === 'aim';
         U.arms[1].rotation.x = aiming ? -1.5 : -0.3;
@@ -1204,7 +1344,7 @@ export class Trail {
           U.man.position.y = e.st === 'aboard' ? 0 : 0.75;
           U.arms.forEach(a => { a.rotation.x = -2.6 + Math.sin(t * 8) * 0.4; });
         }
-        if(e.type === 'rider') e.mesh.position.y += Math.abs(Math.sin((t + e.ph) * 11)) * 0.08;
+        if(e.type === 'rider' && !U.mount.userData.mixer) e.mesh.position.y += Math.abs(Math.sin((t + e.ph) * 11)) * 0.08;
         break;
       }
       case 'dynamite':

@@ -23,6 +23,7 @@ Fire-Stick-bound), a full working game. Working title.
 | `web/space/`, `web/bunker/` | Each game's own link. A phone goes to `play.html?game=…`, a big screen to `tv.html?game=…` (`?tv=1` makes a phone or tablet the TV). |
 | `web/party.html`, `web/gameday/` | The Game Day party printout: one QR code to `/gameday/?party=NAME`, which opens the Game Day Bunker in a fixed room with no codes and no markers. See "The party link" below. |
 | `web/wsim.js`, `web/trail.js`, `web/wagon-phone.js`, `web/wagon-tv.js`, `web/wagon/` | The Wagon (cowboy game): its simulation, its renderer, its phone controls and TV view, its link. See "The Wagon" below. |
+| `web/models/`, `web/models.js`, `web/lib/loaders/`, `web/lib/utils/` | Quaternius's CC0 low-poly models (GLB) and the loader. The Wagon's horses, revolver, cacti, rocks, dead trees, bones, crates and barrels. `ASSETS.md` lists every free pack the owner has in Google Drive and how to get the files. |
 | `web/tv.html` | The TV. Hosts the room (or, with `?watch=CODE`, watches a phone's game), draws the battle, plays the music. `?game=` fixes the game. |
 | `web/play.html` | The phone. Joins a room, or hosts one itself ("START A GAME ON THIS PHONE"). `?game=` fixes the game. |
 | `web/markers/` | Printed markers, an option in both games: `kit.js` (the phone side), `markers.js` (find them), `room.js` (the survey, the boundary, finding yourself), `print.html`, `simcam.js` (a pretend camera for the checks). See "Printed markers" below. |
@@ -568,6 +569,23 @@ vz), `pl` (seat, rk, am, rl) and events `shot`, `hit`, `poof`, `bang`,
 and from the TV, the outlaws lined up and the Baron in
 `shots/wagon-*.png` (`tools/wagongallery.html` runs the simulation in the
 page, no host).
+
+**Real models** (2026-11-19, from the owner's free-asset packs - see
+`ASSETS.md`): `web/models/*.glb`, Quaternius, CC0, ~2 MB in all, loaded in
+the background by `models.js` (one load per file, `SkeletonUtils` clones for
+animated ones). `trail.js` draws its own stand-ins first and swaps the real
+ones in when they arrive (`useModels`), so nothing waits on them and a
+missing file just looks plainer. Used: the four horses of the team and the
+riders' horses (animated: Gallop / Walk / Idle by the wagon's speed; they
+face +z in the file, so turned round), the revolver in your hand and in
+everybody else's, cacti, rocks (tinted red sandstone; the bandits' cover
+rocks are stretched to 2.1 x 1.45 m so a man fits behind), sage bushes,
+dead trees and stumps (flats, gulch, pass), bones and skulls in the gulch,
+the crates and barrels of the cargo, the supply crate. Still home-made:
+the outlaws, partners, vultures, bats, the balloon (no animated cowboy
+reached us - see ASSETS.md). `tools/modelgallery.html?m=Horse:1.7&rot=3.14`
+shows any of them with an arrow along -z, for checking which way a new one
+faces.
 
 **Host fix found on the way**: a phone that went quiet for 6 s in the
 lobby was dropped and, coming back, could be given a different colour

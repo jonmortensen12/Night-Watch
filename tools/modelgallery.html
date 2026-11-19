@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>model gallery</title>
+<style>html, body { margin: 0; background: #c8b090; } canvas { display: block; width: 100vw; height: 100vh; }</style>
+<canvas id="c"></canvas>
+<script type="importmap">{"imports": {"three": "/web/lib/three.module.min.js"}}</script>
+<script type="module">
+/* The GLB models in web/models/, lined up (tools/wagonshots.mjs models).
+   An arrow by each points along -z: the way the game's things face. */
+import * as THREE from 'three';
+import * as M from '/web/models.js';
+const r = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
+r.setSize(innerWidth, innerHeight); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xd8c8a8);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x886644, 1.5));
+const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(5, 10, 7); scene.add(sun);
+const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 100);
+cam.position.set(0, 4, 14); cam.lookAt(0, 1, 0);
+const list = (new URLSearchParams(location.search).get('m') || 'Horse:1.7,Revolver:0.3,Cactus_1:2.5,Cactus_3:2,Rock_1:1,Rock_4:1,DeadTree_1:4,DeadTree_2:4,Barrel:0.9,Crate:0.8,Bones:0.3,Skull:0.3,TreeStump:0.6,Bush:0.8').split(',');
+const mixers = [];
+let x = -(list.length - 1) * 0.75;
+for(const it of list){
+  const [n, h] = it.split(':');
+  const g = await M.make(n, {height: +h, rotY: +(new URLSearchParams(location.search).get('rot') || 0)});
+  if(g){ g.position.x = x; scene.add(g); if(g.userData.play){ g.userData.play('Gallop'); mixers.push(g.userData.mixer); } }
+  const a = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(x, 0.05, 0.6), 0.8, 0xff0000);
+  scene.add(a);
+  x += 1.5;
+}
+const clock = new THREE.Clock();
+(function f(){ requestAnimationFrame(f); const dt = clock.getDelta(); mixers.forEach(m => m.update(dt)); r.render(scene, cam); })();
+window.ready = true;
+</script>
