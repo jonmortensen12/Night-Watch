@@ -65,6 +65,15 @@ function frame(){
   if(view !== 'tv') trail.setView(qq, me.x, me.z, WG.EYE);
   trail.render();
 }
+// gun=1: everybody holding the shotgun; blast=1: this player keeps firing it
+const gunQ = +(q.get('gun') || 0);
+Object.values(S.players).forEach(p => { p.w = gunQ; });
+trail.useGun(gunQ);
+if(q.get('blast')) setInterval(() => {
+  const f = new THREE.Vector3(0, 0, -1).applyQuaternion(qq), u = new THREE.Vector3(-f.z, 0, f.x).normalize(), v = new THREE.Vector3().crossVectors(f, u);
+  const W = WG.GUNS[gunQ];
+  for(let i = 0; i < W.pellets; i++){ const r = W.spread * Math.sqrt(Math.random()), th = Math.random() * 6.283; trail.localShot(f.clone().addScaledVector(u, Math.cos(th) * r).addScaledVector(v, Math.sin(th) * r).normalize(), null, i > 0); }
+}, 700);
 frame();
 window.ready = true;
 window.TRAIL = trail; window.SIM = S;

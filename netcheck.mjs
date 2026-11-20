@@ -315,13 +315,29 @@ while(Date.now() - w0 < 30000 && !wk){
   await wait(300);
 }
 ok(wk >= 1, 'a tap a shot: Fay knocks the rider\'s hat off');
-const am = await ztv.evaluate(() => NW_TV.state().players.find(q => q.n === 'Fay').am);
-ok(am < 6 && am >= 0, 'and the host counted her bullets (' + am + ' left)');
-await zp[0].evaluate(() => NW_TEST.w().reload());
-const reloaded = await until(ztv, () => NW_TV.state().players.find(q => q.n === 'Fay').am === 6, null, 6000);
-ok(reloaded, 'a flick (or the button) reloads all six' + (reloaded ? '' : ': ' + JSON.stringify(await zp[0].evaluate(() => { const s = NW_TEST.w().state(); return {ammo: s.ammo, reloading: s.reloading, phase: s.phase, me: NW_TEST.state().me}; })) + ' host ' + JSON.stringify(await ztv.evaluate(() => { const p = NW_TV.host().S.players; return Object.values(p).map(q => [q.name, q.color, q.ammo, q.rl, q.dry]); }))));
 await ztv.screenshot({path: 'shots/tv-wagon.png'});
 await zp[0].screenshot({path: 'shots/phone-wagon.png'});
+// the rider was the last of the stage: the wagon pulls up and waits
+ok(await until(ztv, () => NW_TV.host().S.hold === true, null, 6000), 'the stage is through: the wagon pulls up and waits');
+ok(await ztv.evaluate(() => NW_TV.state().players.find(q => q.n === 'Fay').am === 6), 'with every gun loaded again');
+ok(await until(zp[1], () => getComputedStyle(document.getElementById('wride')).display !== 'none'), 'every phone offers RIDE ON');
+await wait(1500);
+ok(await ztv.evaluate(() => NW_TV.host().S.hold === true && NW_TV.state().phase === 'break'), 'and nobody rides on until somebody says so');
+// the shotgun: two shells, and the host knows which gun
+await zp[0].evaluate(() => NW_TEST.w().swap());
+ok(await until(ztv, () => { const p = NW_TV.state().players.find(q => q.n === 'Fay'); return p.w === 1 && p.am === 2; }), 'Fay swaps to the shotgun: two shells');
+ok(await until(zp[0], () => { const s = NW_TEST.w().state(); return s.w === 1 && s.cd <= 0 && s.ammo === 2; }, null, 6000), 'the shotgun comes up, loaded');   // a moment to bring the new gun up
+await zp[0].evaluate(() => { NW_TEST.aim(0, 0.3, -1); NW_TEST.w().fire(true); NW_TEST.w().fire(false); });
+ok(await until(ztv, () => NW_TV.state().players.find(q => q.n === 'Fay').am === 1), 'one blast: the host counts it, one shell left');
+await zp[0].evaluate(() => NW_TEST.w().reload());
+ok(await until(ztv, () => NW_TV.state().players.find(q => q.n === 'Fay').am === 2, null, 6000), 'a flick (or the button) loads both again');
+await zp[0].screenshot({path: 'shots/phone-wagon-rideon.png'});
+await zp[1].evaluate(() => NW_TEST.w().rideOn());
+ok(await until(ztv, () => NW_TV.host().S.hold === false), 'Gus taps RIDE ON and the wagon rolls');
+ok(await until(zp[0], () => getComputedStyle(document.getElementById('wride')).display === 'none'), 'and the button goes away on every phone');
+ok(await until(ztv, () => NW_TV.state().phase === 'wave', null, 8000), 'the next stage starts after a short count');
+await zp[0].evaluate(() => NW_TEST.w().swap());
+ok(await until(ztv, () => NW_TV.state().players.find(q => q.n === 'Fay').w === 0), 'and back to the revolver');
 // losing the gold
 await ztv.evaluate(async () => {
   const S = NW_TV.host().S, WG = await import('./wsim.js');

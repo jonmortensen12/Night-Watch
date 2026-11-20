@@ -9,14 +9,16 @@
    turns to look. A tap fires one shot; a held finger fans the hammer, a
    little slower. Six shots, then reload: flick the phone (a quick twist of
    the wrist), or tap the cylinder; an empty gun reloads itself after a
-   moment anyway. */
+   moment anyway. The gun button swaps to the sawed-off shotgun: eight
+   pellets a shot, close up, two shots a load. A shot to the head drops
+   any outlaw. Between stages the wagon pulls up until somebody taps RIDE ON. */
 import * as THREE from 'three';
 import {Trail} from './trail.js';
-import {ENEMIES, STAGES, GUN, EYE, BED, COLORS, sideWords} from './wsim.js';
+import {ENEMIES, STAGES, GUNS, EYE, BED, COLORS, sideWords} from './wsim.js';
 
 const FOE_COL = {rider: '#ffb060', bandit: '#ff8a50', thrower: '#ff5040', dynamite: '#ff3020', vulture: '#d0b0a0', bat: '#c070ff',
   cart: '#ffb060', swinger: '#ff8a50', balloon: '#ffd040', crate: '#60ff80', tumble: '#c8a870'};
-const TAP_COOL = GUN.cool, HOLD_COOL = 0.34;
+const HOLD_EXTRA = [0.14, 0.18];   // a held finger fires a little slower than tapping
 
 export function createWagonPhone(ctx){
   // ctx: {tx(msg), SND, banner, toast, callout, buzz, look(dx, dy), isDrag(), me: () => colour, onEvent}
@@ -45,6 +47,13 @@ export function createWagonPhone(ctx){
       #wbar { height: 10px; border-radius: 6px; background: #0008; border: 1px solid #ffd09080; overflow: hidden; margin-top: 3px; }
       #wbarIn { height: 100%; width: 100%; background: linear-gradient(90deg, #ffb040, #ffe080); transition: width 0.2s; }
       #wbarIn.low { background: linear-gradient(90deg, #ff3020, #ff8040); }
+      #wui #wgun { right: 22px; bottom: calc(132px + env(safe-area-inset-bottom)); width: 84px; height: 46px; border-radius: 23px; font-size: 11px; letter-spacing: 0.06em; line-height: 1.15; }
+      #wui #wgun b { font-size: 13px; }
+      #wui #wride { left: 50%; top: 58%; transform: translate(-50%, -50%); width: auto; height: auto; padding: 18px 34px; border-radius: 40px; font: 900 26px system-ui; letter-spacing: 0.06em;
+        background: #c0601acc; border: 2px solid #ffd090; box-shadow: 0 0 26px #ff9040; display: none; animation: wpulse 0.8s infinite alternate; }
+      #wui #wride small { font: 700 12px system-ui; letter-spacing: 0.04em; opacity: 0.9; margin-top: 4px; }
+      #whead { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%) scale(1); z-index: 5; pointer-events: none; font: 900 34px system-ui; letter-spacing: 0.08em; color: #ffd040; text-shadow: 0 0 12px #ff6020, 0 2px 4px #000; opacity: 0; transition: opacity 0.25s, transform 0.25s; }
+      #whead.on { opacity: 1; transform: translate(-50%, -50%) scale(1.15); transition: none; }
       #wstage { margin-top: 4px; color: #fff8; font-weight: 700; letter-spacing: 0.08em; }
       #wblood { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 0.12s; box-shadow: inset 0 0 90px 30px #c02010; }
     </style>
@@ -52,7 +61,10 @@ export function createWagonPhone(ctx){
     <div id="wblood"></div>
     <div id="wwagon">THE WAGON<div id="wbar"><div id="wbarIn"></div></div><div id="wstage"></div></div>
     <button class="wb" id="wreload"><canvas id="wcyl" width="128" height="128"></canvas><small>RELOAD</small></button>
-    <button class="wb" id="wfire">FIRE</button>`;
+    <button class="wb" id="wfire">FIRE</button>
+    <button class="wb" id="wgun"><span>SWAP TO</span><b>SHOTGUN</b></button>
+    <button class="wb" id="wride">🐎 RIDE ON<small>when everybody is ready</small></button>
+    <div id="whead">HEADSHOT!</div>`;
   document.body.appendChild(ui);
   const $ = s => ui.querySelector(s);
   const hud = $('#whud'), hg = hud.getContext('2d');
@@ -62,13 +74,15 @@ export function createWagonPhone(ctx){
 
   /* ---------- this gunslinger ---------- */
   let x = 0, z = 0.2, firing = false, held = 0, cd = 0, phase = 'lobby', S = null;
-  let ammo = GUN.rounds, reloading = 0, dry = 0, active = true, aimTarget = null, wantReload = false;
+  let w = 0, swapT = 0, bag = GUNS.map(g => g.rounds);
+  const G = () => GUNS[w];
+  let ammo = G().rounds, reloading = 0, dry = 0, active = true, aimTarget = null, wantReload = false;
   const fwd = new THREE.Vector3(), up = new THREE.Vector3();
   const hits = [], ouches = [];
 
   function startReload(){
-    if(reloading > 0 || (ammo >= GUN.rounds && hostAm >= GUN.rounds) || phase === 'lobby' || phase === 'over') return;
-    reloading = GUN.reload;
+    if(reloading > 0 || (ammo >= G().rounds && hostAm >= G().rounds) || phase === 'lobby' || phase === 'over') return;
+    reloading = G().reload;
     trail.reloading(true);
     wantReload = true;
     SND.sfx('spin');
@@ -76,6 +90,29 @@ export function createWagonPhone(ctx){
     send();
   }
   $('#wreload').addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); SND.unlock(); startReload(); });
+
+  /* the other gun: the host keeps each gun's rounds, so swapping back finds
+     the revolver as it was left. Not mid-reload. */
+  function swapGun(){
+    if(reloading > 0) return;
+    bag[w] = ammo; w = 1 - w; ammo = bag[w]; dry = 0;
+    cd = Math.max(cd, 0.4); swapT = performance.now();
+    trail.useGun(w);
+    SND.sfx('cock'); ctx.buzz(12);
+    showGun();
+    send();
+  }
+  function showGun(){
+    $('#wgun b').textContent = GUNS[1 - w].name.toUpperCase();
+  }
+  $('#wgun').addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); SND.unlock(); swapGun(); });
+
+  /* pulled up between stages: anybody can call it */
+  $('#wride').addEventListener('pointerdown', e => {
+    e.stopPropagation(); e.preventDefault(); SND.unlock();
+    ctx.tx({t: 'next'}); ctx.buzz(20);
+    $('#wride').style.display = 'none';
+  });
 
   /* a flick of the wrist reloads: a quick spin the phone does not do just
      from somebody turning round to look */
@@ -125,6 +162,8 @@ export function createWagonPhone(ctx){
     if(e.target.tagName === 'INPUT') return false;
     if(e.code === 'Space'){ e.preventDefault(); if(!fingers.has('key')){ fingers.add('key'); pull(); } }
     if(e.code === 'KeyR') startReload();
+    if(e.code === 'KeyQ' || e.code === 'KeyE') swapGun();
+    if(e.code === 'Enter' && S && S.hold) ctx.tx({t: 'next'});
     return true;
   }
   function keyup(e){ if(e.code === 'Space'){ fingers.delete('key'); setFiring(fingers.size > 0); } }
@@ -136,9 +175,9 @@ export function createWagonPhone(ctx){
     // the host fires when this says the trigger is down; it is held down
     // just long enough for one shot on a tap
     ctx.tx({t: 'in', a: [+fwd.x.toFixed(3), +fwd.y.toFixed(3), +fwd.z.toFixed(3)], tg: aimTarget ? aimTarget.id : 0,
-      f: false, sh: shots, rl: wantReload ? 1 : 0});
+      f: false, sh: shots, rl: wantReload ? 1 : 0, w});
   }
-  let shots = 0, lastShot = 0, hostAm = GUN.rounds;
+  let shots = 0, lastShot = 0, hostAm = G().rounds;
 
   function onSnap(s){
     S = s;
@@ -147,13 +186,21 @@ export function createWagonPhone(ctx){
     const mine = (s.pl || []).find(p => p.c === ctx.me());
     if(mine){
       x = mine.x; z = mine.z;
+      // which gun: this phone's choice, unless the host has not had it for a while
+      const hw = mine.w || 0;
+      if(hw !== w && performance.now() - swapT > 800){ w = hw; trail.useGun(w); showGun(); }
       // the host's cylinder is the truth; this phone guesses between snapshots
-      hostAm = mine.am;
-      if(reloading <= 0 && !mine.rl && mine.am !== ammo && performance.now() - lastShot > 450) ammo = mine.am;
-      if(mine.rl && reloading <= 0){ reloading = GUN.reload * 0.5; trail.reloading(true); }
+      if(hw === w){
+        hostAm = mine.am;
+        if(reloading <= 0 && !mine.rl && mine.am !== ammo && performance.now() - lastShot > 450 && performance.now() - swapT > 450) ammo = mine.am;
+        if(mine.rl && reloading <= 0){ reloading = G().reload * 0.5; trail.reloading(true); }
+      }
       if(!mine.rl && wantReload && reloading <= 0) wantReload = false;
     }
-    if(was !== phase && (phase === 'count' || phase === 'lobby')){ ammo = GUN.rounds; reloading = 0; dry = 0; trail.reloading(false); }
+    if(was !== phase && (phase === 'count' || phase === 'lobby')){ bag = GUNS.map(g => g.rounds); ammo = G().rounds; reloading = 0; dry = 0; trail.reloading(false); }
+    // a stop between stages: every gun is loaded again
+    if(was !== phase && phase === 'break'){ bag = GUNS.map(g => g.rounds); ammo = G().rounds; reloading = 0; dry = 0; trail.reloading(false); }
+    $('#wride').style.display = s.hold ? 'flex' : 'none';
     trail.feed(s);
     const hp = Math.max(0, s.hp);
     $('#wbarIn').style.width = hp + '%';
@@ -164,9 +211,22 @@ export function createWagonPhone(ctx){
 
   /* ---------- the events: sounds, words and buzzes ---------- */
   const at = (e) => e ? trail.centreOf(e) : null;
+  const lastBoom = {};
   trail.onEvent = ev => {
     const k = ev[0];
-    if(k === 'shot' && ev[1] !== ctx.me()) SND.sfx('revolver', new THREE.Vector3(ev[2], ev[3], ev[4]), 0.45);
+    if(k === 'shot' && ev[1] !== ctx.me()){
+      // a shotgun sends one of these per pellet: one bang for the lot
+      const now = performance.now();
+      if(!(ev[11] === 1 && now - (lastBoom[ev[1]] || 0) < 120)) SND.sfx(ev[11] === 1 ? 'shotgun' : 'revolver', new THREE.Vector3(ev[2], ev[3], ev[4]), 0.45);
+      lastBoom[ev[1]] = now;
+    }
+    else if(k === 'headshot' && ev[2] === ctx.me()){
+      const h = $('#whead');
+      h.classList.add('on'); setTimeout(() => h.classList.remove('on'), 450);
+      hits.push({t: performance.now(), kill: true, head: true});
+      ctx.buzz([25, 30, 25]);
+    }
+    else if(k === 'rideon'){ $('#wride').style.display = 'none'; SND.sfx('yell', new THREE.Vector3(0, 1.5, -4), 0.6); }
     else if(k === 'hit' && ev[2] === ctx.me()) hits.push({t: performance.now()});
     else if(k === 'poof'){
       const p = new THREE.Vector3(ev[3], ev[4], ev[5]);
@@ -193,7 +253,7 @@ export function createWagonPhone(ctx){
     else if(k === 'crew'){ ctx.callout('His gang are swinging down on ropes!'); }
     else if(k === 'torn'){ ctx.toast(ev[1] === 1 ? 'The balloon is torn!' : 'It is going down - keep shooting!'); SND.sfx('rip'); }
     else if(k === 'barondown'){ ctx.banner('THE BARON IS DOWN!', ''); SND.cue('victory'); }
-    else if(k === 'loaded' && ev[1] === ctx.me()){ ammo = GUN.rounds; reloading = 0; wantReload = false; trail.reloading(false); }
+    else if(k === 'loaded' && ev[1] === ctx.me()){ ammo = G().rounds; reloading = 0; wantReload = false; trail.reloading(false); }
     if(ctx.onEvent) ctx.onEvent(ev);
   };
 
@@ -226,10 +286,10 @@ export function createWagonPhone(ctx){
     cd = Math.max(0, cd - dt);
     if(reloading > 0){
       reloading -= dt;
-      if(reloading <= 0){ reloading = 0; ammo = GUN.rounds; trail.reloading(false); SND.sfx('cock'); }
+      if(reloading <= 0){ reloading = 0; ammo = G().rounds; trail.reloading(false); SND.sfx('cock'); }
     } else if(ammo <= 0){
       dry += dt;
-      if(dry > GUN.autoReload){ dry = 0; reloading = GUN.reload * 0.25; trail.reloading(true); SND.sfx('spin'); }
+      if(dry > G().autoReload){ dry = 0; reloading = G().reload * 0.25; trail.reloading(true); SND.sfx('spin'); }
     }
     if(firing){
       held += dt;
@@ -244,27 +304,45 @@ export function createWagonPhone(ctx){
   }
 
   function shoot(){
-    cd = held > 0.25 ? HOLD_COOL : TAP_COOL + 0.05;
+    const W = G();
+    cd = W.cool + (held > 0.25 ? HOLD_EXTRA[w] : 0.05);
     ammo--; dry = 0;
     shots = (shots + 1) % 1000;
     lastShot = performance.now();
-    const d = fwd.clone();
-    if(!aimTarget){
-      const sp = GUN.spread, r = sp * Math.sqrt(Math.random()), th = Math.random() * Math.PI * 2;
-      const u = new THREE.Vector3(-d.z, 0, d.x).normalize(), v = new THREE.Vector3().crossVectors(d, u).normalize();
-      d.addScaledVector(u, Math.cos(th) * r).addScaledVector(v, Math.sin(th) * r).normalize();
+    // what the host will work out, guessed here so the shot shows at once:
+    // the revolver's one ball, the shotgun's spray
+    const u = new THREE.Vector3(-fwd.z, 0, fwd.x).normalize(), v = new THREE.Vector3().crossVectors(fwd, u).normalize();
+    for(let i = 0; i < W.pellets; i++){
+      const d = fwd.clone();
+      const aimed = aimTarget && i === 0;
+      if(!aimed){
+        const r = W.spread * Math.sqrt(Math.random()), th = Math.random() * Math.PI * 2;
+        d.addScaledVector(u, Math.cos(th) * r).addScaledVector(v, Math.sin(th) * r).normalize();
+      }
+      trail.localShot(d, aimed ? trail.centreOf(aimTarget) : null, i > 0);
     }
-    trail.localShot(d, aimTarget ? trail.centreOf(aimTarget) : null);
-    SND.sfx('revolver');
-    ctx.buzz(10);
+    SND.sfx(W.pellets > 1 ? 'shotgun' : 'revolver');
+    ctx.buzz(W.pellets > 1 ? 25 : 10);
     send();
     if(ammo === 0) setTimeout(() => { if(ammo === 0 && reloading <= 0) ctx.callout('Empty! Flick the phone to reload'); }, 250);
   }
 
-  /* the cylinder on the RELOAD button: six chambers, the loaded ones brass */
+  /* the cylinder on the RELOAD button: six chambers, the loaded ones brass
+     (the shotgun: its two shells, red) */
   function drawCylinder(){
     const g = cg, s = 128, c = s / 2;
     g.clearRect(0, 0, s, s);
+    if(w === 1){
+      const lift = reloading > 0 ? Math.sin(performance.now() / 90) * 6 : 0;
+      for(let i = 0; i < 2; i++){
+        const px = c + (i ? 22 : -22), full = reloading <= 0 && i < ammo;
+        g.fillStyle = '#3a3c42'; g.beginPath(); g.arc(px, c + lift * (i ? 1 : -1), 24, 0, Math.PI * 2); g.fill();
+        g.fillStyle = full ? '#c03020' : '#121214'; g.beginPath(); g.arc(px, c + lift * (i ? 1 : -1), 17, 0, Math.PI * 2); g.fill();
+        if(full){ g.fillStyle = '#e0b040'; g.beginPath(); g.arc(px, c, 8, 0, Math.PI * 2); g.fill(); }
+      }
+      finishCylinder();
+      return;
+    }
     const spin = reloading > 0 ? performance.now() / 60 : 0;
     g.save(); g.translate(c, c); g.rotate(spin);
     g.fillStyle = '#5a5e66'; g.beginPath(); g.arc(0, 0, 54, 0, Math.PI * 2); g.fill();
@@ -278,6 +356,9 @@ export function createWagonPhone(ctx){
     }
     g.fillStyle = '#2a2c30'; g.beginPath(); g.arc(0, 0, 9, 0, Math.PI * 2); g.fill();
     g.restore();
+    finishCylinder();
+  }
+  function finishCylinder(){
     $('#wreload').classList.toggle('empty', ammo <= 0 && reloading <= 0 && (phase === 'wave' || phase === 'break'));
     $('#wreload small').textContent = reloading > 0 ? 'LOADING' : ammo <= 0 ? 'EMPTY!' : 'RELOAD';
   }
@@ -338,9 +419,14 @@ export function createWagonPhone(ctx){
     g.stroke();
     g.beginPath(); g.arc(cx, cy, 2.2, 0, Math.PI * 2); g.fill();
     if(on){ g.beginPath(); g.arc(cx, cy, 24, 0, Math.PI * 2); g.globalAlpha = 0.6; g.stroke(); g.globalAlpha = 1; }
+    if(w === 1){
+      // the shotgun's spread, roughly, on this screen
+      const r = Math.max(30, trail.spreadPx ? trail.spreadPx(G().spread) : 60);
+      g.globalAlpha = 0.45; g.setLineDash([5, 6]); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+    }
     if(reloading > 0){
       g.strokeStyle = '#ffd890'; g.lineWidth = 3;
-      g.beginPath(); g.arc(cx, cy, 30, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - reloading / GUN.reload)); g.stroke();
+      g.beginPath(); g.arc(cx, cy, 30, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - reloading / G().reload)); g.stroke();
     }
     for(let i = hits.length - 1; i >= 0; i--){
       const k = (now - hits[i].t) / 250;
@@ -368,10 +454,12 @@ export function createWagonPhone(ctx){
     get active(){ return active; },
     // for netcheck
     test: {
-      state: () => ({x, z, ammo, reloading, phase, target: aimTarget ? aimTarget.id : 0,
+      state: () => ({x, z, ammo, reloading, phase, w, cd, hold: !!(S && S.hold), target: aimTarget ? aimTarget.id : 0,
         foes: [...trail.foes.values()].map(e => ({id: e.id, type: e.type, st: e.st, p: [e.d.x, e.d.y, e.d.z], c: trail.centreOf(e).toArray(), hit: trail.canHit(e)}))}),
       fire: on => { if(on){ fingers.add('test'); pull(); } else { fingers.delete('test'); setFiring(fingers.size > 0); } },
       reload: startReload,
+      swap: swapGun,
+      rideOn: () => $('#wride').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true})),
     },
   };
 }

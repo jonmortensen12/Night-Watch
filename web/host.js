@@ -147,6 +147,9 @@ export function createHost(opts){
     } else if(d.t === 'seat'){
       // the wagon: where this player sits on the bench, between games
       if(mode === 'wagon' && p.role === 'player' && (S.phase === 'lobby' || S.phase === 'over')){ WG.setSeat(S, p.id, d.i | 0); roomDirty = true; }
+    } else if(d.t === 'next'){
+      // the wagon: ride on from the stop between stages
+      if(mode === 'wagon' && p.role === 'player') WG.next(S, p.id);
     } else if(d.t === 'ready'){
       if(S.phase === 'lobby'){ p.ready = !!d.v; roomDirty = true; maybeStart(); }
     } else if(d.t === 'go'){
@@ -336,7 +339,7 @@ export function createHost(opts){
     send, broadcast, people: () => people,
     fence: () => walking() ? mk.layout : null, markers: () => mk,
     // the TV's own keyboard
-    key: k => { if(k === 'go') go(); },
+    key: k => { if(k === 'go'){ if(mode === 'wagon' && S.phase === 'break') WG.next(S); else go(); } },
     setLook: key => fromPhone({id: '-', role: 'player'}, {t: 'look', key}),
     setMarkers: m => fromPhone({id: '-', role: 'player'}, {t: 'markers', mode: m}),
     destroy: () => { dead = true; clearInterval(timer); if(handle) handle.destroy(); },

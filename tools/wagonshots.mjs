@@ -46,6 +46,8 @@ const SHOTS = {
   'dusk-tv':       ['stage=1&lap=1&t=12&view=tv', 'tv'],
   'grid-tv':       ['stage=0&t=14&view=tv&seats=1,6,11', 'tv'],
   'grid-back':     ['stage=0&t=14&seats=1,6,11&seat=3&yaw=-15&pitch=-6', 'phone'],
+  'shotgun-phone': ['stage=1&t=10&yaw=20&pitch=2&gun=1&blast=1', 'phone'],
+  'shotgun-team':  ['stage=0&t=14&seats=1,6,11&seat=3&yaw=-15&pitch=-6&gun=1', 'phone'],
 };
 const want = process.argv.slice(2);
 for(const [name, [qs, kind]] of Object.entries(SHOTS)){

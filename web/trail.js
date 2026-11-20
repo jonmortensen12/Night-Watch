@@ -24,7 +24,7 @@ import {RenderPass} from './lib/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from './lib/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from './lib/postprocessing/OutputPass.js';
 import {Particles, Beam, glowTex, canvasTex, textSprite, hot} from './world.js';
-import {ENEMIES, ENEMY_LIST, STATES, STAGES, SPEED, EYE, BED, WAGON, COLORS, GUN, centre} from './wsim.js';
+import {ENEMIES, ENEMY_LIST, STATES, STAGES, SPEED, EYE, BED, WAGON, COLORS, GUN, GUNS, centre} from './wsim.js';
 import * as M from './models.js';
 import {makeCowboy, holdInHand} from './cowboys.js';
 
@@ -39,7 +39,7 @@ const COWBOY_H = 1.75;
 /* Quaternius's CC0 models (web/models/, ASSETS.md), once loaded: name ->
    loaded model. Until then (or if one fails) everything is drawn the
    home-made way below, so the game never waits on them. */
-const MODEL_NAMES = ['Horse', 'Horse_White', 'Revolver', 'Cactus_1', 'Cactus_2', 'Cactus_3', 'Cactus_4', 'Cactus_5',
+const MODEL_NAMES = ['Horse', 'Horse_White', 'Revolver', 'Shotgun', 'Cactus_1', 'Cactus_2', 'Cactus_3', 'Cactus_4', 'Cactus_5',
   'Rock_1', 'Rock_2', 'Rock_3', 'Rock_4', 'Rock_5', 'Rock_6', 'Rock_7', 'DeadTree_1', 'DeadTree_2', 'Bush',
   'Barrel', 'Crate', 'Bones', 'Skull', 'TreeStump', 'WoodLog'];
 const MOD = {};
@@ -80,10 +80,11 @@ function boulder(m, w, h, d){
   o.scale.set(w / sz.x, 1, d / sz.z);
   return o;
 }
-/* The revolver from Quaternius's survival pack: barrel along +x in the file. */
-function modelRevolver(len){
-  if(!MOD.Revolver) return null;
-  const g = M.makeNow(MOD.Revolver, {width: len, rotY: Math.PI / 2});
+/* The revolver and the sawed-off from Quaternius's survival pack: barrel
+   along +x in the file. */
+function modelRevolver(len, name){
+  if(!MOD[name || 'Revolver']) return null;
+  const g = M.makeNow(MOD[name || 'Revolver'], {width: len, rotY: Math.PI / 2});
   g.updateMatrixWorld(true);
   const b = new THREE.Box3().setFromObject(g);
   g.position.y = -(b.min.y + b.max.y) / 2;
@@ -260,6 +261,11 @@ function buildHat(color, wide){
   part(g, new THREE.CylinderGeometry(0.135, 0.135, 0.03, 14), mat(0x2a1a10), 0, 0.02, 0);
   return g;
 }
+/* the sawed-off: the model, or (until the bundle is in) the revolver */
+function buildShotgun(scale){
+  return modelRevolver(0.42 * (scale || 1), 'Shotgun') || buildRevolver(scale);
+}
+const buildGun = (w, scale) => w === 1 ? buildShotgun(scale) : buildRevolver(scale);
 function buildRevolver(scale){
   const real = modelRevolver(0.26 * (scale || 1));
   if(real) return real;
@@ -930,11 +936,11 @@ export class Trail {
     }
     // the gun in this player's hand
     if(this.gun && MOD.Revolver){
-      const real = modelRevolver(0.2);
       this.cam.remove(this.gun);
-      this.gun = real; this.gun.position.set(0.17, -0.17, -0.34);
+      this.guns = [modelRevolver(0.2), modelRevolver(0.34, 'Shotgun') || modelRevolver(0.2)];
       this.gunHome = new THREE.Vector3(0.19, -0.2, -0.4);
-      this.cam.add(this.gun);
+      this.gun = null;
+      this.useGun(this.weapon || 0, true);
     }
     // show what this stage shows
     const k = this.stage, l = this.lap;
@@ -991,6 +997,7 @@ export class Trail {
     const now = performance.now();
     this.players = s.pl || [];
     this.phase = s.ph;
+    this.hold = !!s.hold;
     if(Number.isFinite(s.hp)) this.hp = s.hp;
     if(Number.isFinite(s.dist)) this.distSnap = s.dist, this.distAt = now;
     // the scenery: during the stop between stages, the next stage comes up
@@ -1043,6 +1050,7 @@ export class Trail {
         this.dressPartner(a, p.c);
       }
       a.xT = p.x; a.zT = p.z; a.aimT = p.a; a.f = p.f;
+      if((p.w || 0) !== a.w){ a.w = p.w || 0; this.partnerGun(a); }
     }
     for(const [c, a] of this.partners) if(!want.has(c)){ this.scene.remove(a.mesh); this.partners.delete(c); }
     for(const ev of s.ev || []) this.event(ev);
@@ -1085,6 +1093,9 @@ export class Trail {
         this.tracer(c, to.clone(), true);
         this.parts.burst(to, 6, 2, new THREE.Color(1.8, 1.4, 1.0), 0.08, 0.3);
       }
+    } else if(k === 'headshot'){
+      const e = this.foes.get(ev[1]);
+      if(e){ const c = this.centreOf(e); this.parts.burst(c.add(_v1.set(0, 0.5, 0)), 14, 3.5, new THREE.Color(3, 2.2, 0.9), 0.12, 0.35); this.flyHat(e, c, 1.2); }
     } else if(k === 'ouch'){
       this.hurtT = 0.4;
     } else if(k === 'torn'){
@@ -1098,23 +1109,37 @@ export class Trail {
     const b = this.beams.find(x => x.t <= 0) || this.beams[0];
     b.set(from, to, enemy ? new THREE.Color(2.6, 1.2, 0.6) : new THREE.Color(2.6, 2.0, 1.0), 0.014, 0.06);
   }
-  localShot(dir, hitPoint){
+  localShot(dir, hitPoint, pellet){
     const g = this.gun;
     const muzzle = g.userData.muzzle.clone().applyMatrix4(g.matrixWorld);
-    const to = hitPoint || dir.clone().multiplyScalar(GUN.range).add(this.cam.position);
+    const W = GUNS[this.weapon || 0] || GUN;
+    const to = hitPoint || dir.clone().multiplyScalar(W.range).add(this.cam.position);
     this.tracer(muzzle, to);
-    if(hitPoint) this.parts.burst(hitPoint, 6, 3, new THREE.Color(2.4, 1.6, 0.6), 0.1, 0.3);
+    if(hitPoint) this.parts.burst(hitPoint, pellet ? 3 : 6, 3, new THREE.Color(2.4, 1.6, 0.6), 0.1, 0.3);
+    if(pellet) return;    // the shotgun's other pellets: just their streaks
     this.parts.burst(muzzle, 6, 1.2, new THREE.Color(1.2, 1.1, 1.0), 0.06, 0.4);
     this.recoil = 1;
     this.muzzleFlash.visible = true;
     this.muzzleFlash.position.copy(g.position).add(g.userData.muzzle);
-    this.muzzleFlash.scale.set(0.22, 0.22, 1);
+    this.muzzleFlash.scale.setScalar(W.pellets > 1 ? 0.4 : 0.22);
     this.flashT = 0.05;
     this.flashLight.position.copy(muzzle);
     this.flashLight.intensity = 6;
   }
   /* the reload: the gun flips up and the cylinder spins */
   reloading(on){ this.reload = on; }
+  /* which gun is in this player's hand: 0 the revolver, 1 the shotgun */
+  useGun(w, force){
+    if(w === this.weapon && !force) return;
+    this.weapon = w;
+    if(!this.guns) return;
+    const g = this.guns[w] || this.guns[0];
+    if(this.gun === g) return;
+    if(this.gun) this.cam.remove(this.gun);
+    this.gun = g; this.gun.position.copy(this.gunHome);
+    this.cam.add(this.gun);
+    this.recoil = 0; this.spin = 1;
+  }
 
   poof(p, type, e){
     const dusty = new THREE.Color(0.9, 0.75, 0.55);
@@ -1214,6 +1239,8 @@ export class Trail {
   foesOn(p){ for(const e of this.foes.values()) if(e.mesh.userData.pillar === p && e.st === 'wait') return true; return false; }
   canHit(e){ return !((e.type === 'bandit' || e.type === 'thrower') && e.st === 'hide' && e.rise < 0.5); }
   centreOf(e){ const c = centre({type: e.type, x: e.d.x, y: e.d.y, z: e.d.z}); return new THREE.Vector3(c[0], c[1], c[2]); }
+  /* how wide an angle (radians) looks on this screen, in CSS pixels */
+  spreadPx(a){ return innerHeight / 2 / Math.tan(this.cam.fov * Math.PI / 360) * Math.tan(a); }
   project(p){
     const v = _v1.copy(p).project(this.cam);
     const inFront = _v2.copy(p).sub(this.cam.position).dot(_v3.set(0, 0, -1).applyQuaternion(this.cam.quaternion)) > 0;
@@ -1231,7 +1258,8 @@ export class Trail {
     this.last = now;
     this.time += dt;
     const t = this.time, ease = 1 - Math.exp(-dt * 12);
-    const rolling = this.phase !== 'lobby' && this.phase !== 'over';
+    // pulled up between stages, the wagon stands until somebody rides on
+    const rolling = this.phase !== 'lobby' && this.phase !== 'over' && !this.hold;
     const v = rolling ? SPEED : this.phase === 'lobby' ? 2.5 : 0;
     this.dist += v * dt;
     this.shake = Math.max(0, (this.shake || 0) - dt);
@@ -1326,7 +1354,10 @@ export class Trail {
       const rl = this.reload ? 1 : 0;
       this.spin += ((rl ? 1 : 0) - this.spin) * Math.min(1, dt * 10);
       const home = this.gunHome || _gunHome;
-      this.gun.position.set(home.x, home.y + this.recoil * 0.02 + this.spin * 0.05, home.z + this.recoil * 0.05);
+      // kept on screen when the phone is upright: as far right as a narrow view allows
+      const half = -home.z * Math.tan(this.cam.fov * Math.PI / 360) * this.cam.aspect;
+      const gx = Math.min(home.x, half * (this.weapon === 1 ? 0.45 : 0.6));
+      this.gun.position.set(gx, home.y + this.recoil * 0.02 + this.spin * 0.05, home.z + this.recoil * 0.05);
       this.gun.rotation.set(this.recoil * 0.4 + this.spin * 0.9, 0, this.spin * 0.6);
       if(this.reload) this.gun.userData.cyl.rotation.y += dt * 20;
       if(this.flashT > 0){ this.flashT -= dt; if(this.flashT <= 0){ this.muzzleFlash.visible = false; this.flashLight.intensity = 0; } }
@@ -1392,10 +1423,16 @@ export class Trail {
       for(const ch of a.mesh.children) if(ch !== P.tag && ch !== P.sack) ch.visible = false;
       c.position.y = -SEAT + 0.02;
       if(!this.tv) M.materials(c).forEach(mt => { mt.transparent = true; mt.opacity = 0.35; mt.depthWrite = false; });
-      const gun = buildRevolver(1.1); gun.rotation.set(Math.PI / 2, 0, 0); holdInHand(c, gun, new THREE.Vector3(0, 0.05, 0));
       a.mesh.add(c);
       a.cb = c;
+      this.partnerGun(a);
     });
+  }
+  partnerGun(a){
+    if(!a.cb) return;
+    if(a.gun && a.gun.parent) a.gun.parent.remove(a.gun);
+    a.gun = buildGun(a.w || 0, 1.1); a.gun.rotation.set(Math.PI / 2, 0, 0);
+    holdInHand(a.cb, a.gun, new THREE.Vector3(0, 0.05, 0));
   }
   cowboyPose(e, U, dt){
     const C = U.cb.userData;

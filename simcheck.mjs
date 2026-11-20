@@ -543,6 +543,7 @@ function wplay(n, seed, skill, maxMin = 25){
   let t = 0, waveTimes = [], lastWave = 0, lastT = 0, peak = 0, ouch = {}, kinds = {};
   while(S.phase !== 'over' && t < maxMin * 60){
     Object.values(S.players).forEach((p, i) => wbot(S, p, mems[i], skill));
+    if(S.phase === 'break' && S.hold && S.phaseT > 3) WG.next(S, 'p0');     // a few seconds at the stop, then ride on
     WG.step(S, WDT);
     t += WDT;
     peak = Math.max(peak, S.foes.length);
@@ -592,7 +593,9 @@ console.log('the wagon: revolvers');
   const b = WG.newFoe(S, 'rider', 0, 0, -30, {st: 'station', station: [0, -30], fireT: 99, boardT: 99, side: 1});
   b.hp = b.hpMax = 99;
   let shots = 0;
-  for(let i = 0; i < 60 * 3; i++){ WG.input(S, 'a', {a: aimAt(b), f: true, tg: b.id}); WG.step(S, DT); shots += S.ev.filter(e => e[0] === 'shot').length; S.ev = []; if(S.players.a.ammo === 0) break; }
+  // at the horse, not his head (a headshot would end this at once)
+  const body = f => { const c = WG.centre(f), p = S.players.a, d = [c[0] - p.x, c[1] - 0.8 - WG.EYE + 0.1, c[2] - p.z], l = Math.hypot(...d); return d.map(q => q / l); };
+  for(let i = 0; i < 60 * 3; i++){ WG.input(S, 'a', {a: body(b), f: true}); WG.step(S, DT); shots += S.ev.filter(e => e[0] === 'shot').length; S.ev = []; if(S.players.a.ammo === 0) break; }
   ok(shots === 6 && S.players.a.ammo === 0, 'six shots and the cylinder is empty');
   WG.input(S, 'a', {a: aimAt(b), f: true, rl: 1});
   for(let i = 0; i < 60 * 1.2; i++) WG.step(S, DT);
@@ -614,6 +617,48 @@ console.log('the wagon: revolvers');
   for(let i = 0; i < 60 && !h.dead; i++){ WG.input(S, 'a', {a: aimAt(h), f: i % 15 === 0, tg: h.id}); WG.step(S, DT); }
   ok(h.dead, 'up from behind it, he goes down');
   ok(h.z > -20, 'and his rock was coming past the wagon all the while');
+}
+console.log('the wagon: headshots, the shotgun, the stop between stages');
+{
+  const fresh = () => { const S = WG.create(21); WG.join(S, 'a', 'Ann'); WG.start(S); for(let i = 0; i < 60 * 5; i++) WG.step(S, DT); S.foes = []; S.plan.sent = S.plan.groups.length + 99;
+    WG.newFoe(S, 'rider', 40, 0, 60, {st: 'station', station: [40, 60], fireT: 99, boardT: 99, side: 1}); return S; };
+  const aimAtPt = (S, c) => { const p = S.players.a, d = [c[0] - p.x, c[1] - WG.EYE + 0.1, c[2] - p.z], l = Math.hypot(...d); return d.map(q => q / l); };
+  let S = fresh();
+  const r = WG.newFoe(S, 'rider', -4, 0, -10, {st: 'station', station: [-4, -10], fireT: 99, boardT: 99, side: -1});
+  r.hp = r.hpMax = 30;
+  WG.input(S, 'a', {a: aimAtPt(S, WG.headOf(r)), f: true, tg: r.id}); WG.step(S, DT);
+  ok(r.dead && S.ev.some(e => e[0] === 'headshot') && S.players.a.heads === 1, 'a revolver shot to the head takes even a tough one down in one');
+  S = fresh();
+  const r2 = WG.newFoe(S, 'rider', -4, 0, -10, {st: 'station', station: [-4, -10], fireT: 99, boardT: 99, side: -1});
+  const hp0 = r2.hp, c = WG.centre(r2);
+  WG.input(S, 'a', {a: aimAtPt(S, [c[0], c[1] - 0.7, c[2]]), f: true}); WG.step(S, DT); WG.input(S, 'a', {f: false});
+  ok(!S.ev.some(e => e[0] === 'headshot') && hp0 - r2.hp === WG.GUN.dmg, 'a body shot does ' + WG.GUN.dmg + ' damage');
+  S = fresh();
+  WG.input(S, 'a', {w: 1, f: false});
+  for(let i = 0; i < 30; i++) WG.step(S, DT);
+  ok(S.players.a.w === 1 && S.players.a.ammo === 2, 'the shotgun: two shells');
+  const big = WG.newFoe(S, 'cart', 0, 0, -6, {st: 'station', station: [0, -6], fireT: 99, noBoard: 1, side: 1});
+  big.hp = big.hpMax = 8;
+  let pellets = 0;
+  WG.input(S, 'a', {a: aimAtPt(S, WG.centre(big)), f: true}); WG.step(S, DT); WG.input(S, 'a', {f: false});
+  pellets = S.ev.filter(e => e[0] === 'shot').length;
+  ok(pellets === 8 && big.dead, 'eight pellets, and close up it flattens even a mine cart');
+  for(let i = 0; i < 30; i++){ WG.input(S, 'a', {a: [0, 0, -1], f: i % 20 === 0}); WG.step(S, DT); }
+  ok(S.players.a.ammo === 0, 'two shots and it is empty');
+  WG.input(S, 'a', {w: 0, f: false}); for(let i = 0; i < 30; i++) WG.step(S, DT);
+  ok(S.players.a.w === 0 && S.players.a.ammo === 6, 'back to the revolver: still its six');
+  // the stop between stages
+  const H = WG.create(5); WG.join(H, 'a', 'Ann'); WG.start(H);
+  for(let i = 0; i < 60 * 5; i++) WG.step(H, DT);
+  H.foes = []; H.plan.sent = H.plan.groups.length;
+  WG.step(H, DT);
+  const d0 = H.dist;
+  for(let i = 0; i < 60 * 30; i++) WG.step(H, DT);
+  ok(H.phase === 'break' && H.hold && H.wave === 1 && Math.abs(H.dist - d0) < 1 && WG.snap(H).hold === 1, 'through a stage, the wagon stops and waits - as long as it takes');
+  WG.next(H, 'a');
+  ok(H.ev.some(e => e[0] === 'rideon'), 'RIDE ON from any phone');
+  for(let i = 0; i < 60 * (WG.BREAK_TIME + 0.5); i++) WG.step(H, DT);
+  ok(H.phase === 'wave' && H.wave === 2, 'and after a short count, on to the next stage');
 }
 console.log('the wagon: trouble');
 {
@@ -649,7 +694,7 @@ console.log('the wagon: trouble');
   WG.input(S, 'a', {a: vv.map(x => x / ll), f: true, tg: cr.id}); WG.step(S, DT);
   ok(S.hp === 65, 'shooting a supply crate patches the wagon up');
   const B = WG.create(3); WG.join(B, 'a', 'Ann'); WG.start(B);
-  while(B.wave < 6){ WG.step(B, DT); if(B.phase === 'wave' && B.wave < 6){ B.foes = []; B.plan.sent = B.plan.groups.length; } B.hp = 100; }
+  while(B.wave < 6){ WG.step(B, DT); WG.next(B); if(B.phase === 'wave' && B.wave < 6){ B.foes = []; B.plan.sent = B.plan.groups.length; } B.hp = 100; }
   ok(B.foes.some(f => f.type === 'balloon'), 'wave 6, Outlaw\'s Pass: the Balloon Baron');
   let drops = 0, crew = 0;
   for(let i = 0; i < 60 * 40 && B.phase !== 'over'; i++){ WG.step(B, DT); B.hp = 100; drops += B.ev.filter(e => e[0] === 'toss').length; crew += B.ev.filter(e => e[0] === 'crew').length; B.ev = []; }

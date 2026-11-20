@@ -503,9 +503,13 @@ ground and road textures, so a bandit's rock stays put on the ground.
 5. **Hangman's Gorge** - a trestle bridge over a river far below: rope bandits swing onto the wagon from sandstone pillars beside it, cliff throwers, vultures.
 6. **Outlaw's Pass** - sunset, the boss: **the Balloon Baron** in a patched hot-air balloon, dropping dynamite, his gang swinging down from the basket on ropes. Torn at 2/3 and 1/3.
 
-During the 10 s stop between stages the next stage's scenery comes up.
-Every stage also has a supply crate or two by the trail: shoot it, +15 to
-the wagon (a cleared stage gives +20).
+Between stages the wagon **pulls up and waits** (`S.hold`): the horses
+stand, the next stage's scenery comes up, every gun is loaded again, and
+nothing happens until somebody taps **RIDE ON** on a phone (`{t:'next'}`,
+or Enter on the TV / a keyboard phone) - then a 4 s count (`BREAK_TIME`)
+and the next stage. `wsim.next(S, id)` does it; the computer players in
+`simcheck` ride on after 3 s. Every stage also has a supply crate or two
+by the trail: shoot it, +15 to the wagon (a cleared stage gives +20).
 
 **Trouble** (`ENEMIES`): **riders** gallop up beside the wagon, keep pace
 and fire (a glint as they aim), and jump aboard if left alone ~15 s;
@@ -517,7 +521,19 @@ fire; **rope bandits** swing in from rock pillars (or the Baron's basket) and la
 hurts the wagon steadily until shot off. The wagon has 100 health; at 0
 the gang gets the gold.
 
-**Revolvers** (`GUN`): six shots, 1 damage, 90 m. A tap is one shot (it
+**Guns** (`GUNS`, the player's `w`; `GUN` is the revolver). The
+**revolver**: six shots, 2 damage, 90 m. The **sawed-off shotgun** (the
+SWAP button above RELOAD, or Q/E): two shells, eight pellets of 1.7
+damage in a wide cone, falling off past 30 m and gone at 40 - one blast
+drops most things close up, but it reloads slower (1.9 s). The host
+keeps each gun's rounds (`p.bag`), so swapping back finds the revolver as
+it was left; no swapping mid-reload. **Headshots** (revolver only): a ray
+through the head sphere (`headOf`, `HEAD_R` 0.3) kills anything with a
+head in one shot, +50 score, a `headshot` event (HEADSHOT! on the
+shooter's phone, the hat flies); two or more earns the *Dead Shot* award.
+The Balloon Baron's balloon has 80 health to suit.
+
+A tap is one shot (it
 fires on the press itself, so a quick tap is never lost to a slow frame);
 held, it fans the hammer at ~3/s. The phone counts its shots (`in.sh`) and
 the host fires once per new count, so the host fires exactly what the
@@ -559,15 +575,15 @@ showdown, 160), cues **wwave** (a bugle call over the gallop), **wclear**
 sliding harmonica).
 
 **Tuning** (`simcheck`, computer gunslingers who see all round and tap ~4
-shots a second): one average ~wave 4-6, two ~5-6, four ~6, two good ~7;
+shots a second, aiming at the body): one average ~stage 5, two ~6, four ~7, two good ~8;
 stages ~50-70 s. The Pass (wave 6) is where most average games end;
 good players get past the Baron.
 
-**Protocol additions**: phone -> host `in {a, tg, sh, rl}` (aim, pick,
-shot count, reload), `seat {i}`. Host -> phone `s` in wagon mode carries
-`hp`, `sg` (stage), `dist`, `m` (11 numbers a foe: id, type, x, y, z,
+**Protocol additions**: phone -> host `in {a, tg, sh, rl, w}` (aim, pick,
+shot count, reload, gun), `seat {i}`, `next` (ride on). Host -> phone `s` in wagon mode carries
+`hp`, `sg` (stage), `dist`, `hold`, `m` (11 numbers a foe: id, type, x, y, z,
 facing, health %, state, aux - a progress % plus 1000 if on the left - vx,
-vz), `pl` (seat, rk, am, rl) and events `shot`, `hit`, `poof`, `bang`,
+vz), `pl` (seat, rk, am, rl, w, hd - headshots) and events `shot` (one per pellet; the 12th number is the gun), `headshot`, `rideon`, `hit`, `poof`, `bang`,
 `ouch`, `toss`, `blast`, `dive`, `swing`, `aboard`, `supplies`, `baron`,
 `crew`, `torn`, `barondown`, `loaded`.
 

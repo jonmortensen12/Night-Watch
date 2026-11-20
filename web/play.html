@@ -796,6 +796,7 @@ function state(){
   if(phase === 'over' && was !== 'over') results();
   if(phase === 'over') $('againBtn').disabled = $('lobbyBtn').disabled = S.pt < 2.5;
   if(phase === 'count') banner(String(Math.ceil(S.pt)), mode === 'zombie' ? 'Keep them out of the bunker' : mode === 'wagon' ? 'Get the gold through!' : 'Find them. Shoot them.');
+  else if(phase === 'break' && mode === 'wagon' && S.hold) banner((W_STAGES[S.sg] || W_STAGES[0]).name.toUpperCase() + ' - THROUGH!', 'Pulled up. Next: ' + W_STAGES[(S.sg + 1) % W_STAGES.length].name + '. Tap RIDE ON when everybody is ready - point at the TV and tap ⌖ if you have drifted');
   else if(phase === 'break' && mode === 'wagon') banner((W_STAGES[S.sg] || W_STAGES[0]).name.toUpperCase() + ' - THROUGH!', 'Next: ' + W_STAGES[(S.sg + 1) % W_STAGES.length].name + ' in ' + Math.ceil(S.pt) + ' - point at the TV and tap ⌖ if you have drifted');
   else if(phase === 'break') banner('WAVE ' + S.w + ' CLEARED', 'Next wave in ' + Math.ceil(S.pt) + (mode === 'zombie' ? ' - repair the walls!' : kit.yaw() != null ? ' - glance at a marker' : ' - point at FRONT and tap ⌖ to re-lock'));
 }
@@ -1038,7 +1039,7 @@ function drawRoom(){
   [...$('modes').children].forEach(b => b.classList.toggle('sel', b.dataset.mode === rm));
   drawSeats(rm);
   $('modeHelp').textContent = rm === 'wagon'
-    ? 'Everybody sits on the floor facing the TV - up to three across and four rows back - and taps their spot on the wagon below. Turn to aim, tap to shoot. Six shots, then flick the phone to reload. Shoot the dynamite in the air!'
+    ? 'Everybody sits on the floor facing the TV - up to three across and four rows back - and taps their spot on the wagon below. Turn to aim, tap to shoot. Six shots, then flick the phone to reload - or swap to the shotgun: two big blasts, close up. Aim for the head! Shoot the dynamite in the air!'
     : rm === 'zombie'
     ? 'Monsters attack the bunker from every side. Walk with the stick, turn with your body, switch guns at the top. Stand at a damaged wall and hold REPAIR. If one gets in, you lose.'
     : 'Enemy ships all around you - above, behind, under the floor. Hold a finger to fire; hold your aim on one to lock a missile.';

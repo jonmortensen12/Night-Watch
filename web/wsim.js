@@ -37,7 +37,26 @@ export const COLORS = ['#4dd0ff', '#ffb000', '#ff5ca8', '#7cff6b', '#b388ff', '#
 export const COLS = 3, ROWS = 4, MAX_SEATS = COLS * ROWS;
 const COL_X = 0.8, ROW_Z = [-1.75, -0.65, 0.45, 1.55];
 
-export const GUN = {rounds: 6, cool: 0.2, dmg: 1, range: 90, spread: 0.012, assist: 1.1, reload: 1.3, autoReload: 1.6};
+/* Two guns, picked any time (between stages is the moment for it):
+   - the revolver: six shots, accurate, 2 damage - and a HEADSHOT takes
+     anybody down in one;
+   - the shotgun: two shells, eight pellets in a cone that hit hard close
+     up and fade by 30 m; slower to reload. No headshots: it does not need them. */
+export const GUNS = [
+  {key: 'revolver', name: 'Revolver', rounds: 6, cool: 0.2,  dmg: 2,   pellets: 1, spread: 0.012, range: 90, assist: 1.1, reload: 1.3, autoReload: 1.6, head: true},
+  {key: 'shotgun',  name: 'Shotgun',  rounds: 2, cool: 0.32, dmg: 1.7, pellets: 8, spread: 0.085, range: 40, assist: 1.0, reload: 1.9, autoReload: 1.2, head: false, falloff: 30},
+];
+export const GUN = GUNS[0];
+/* Where a person's head is, above where they stand (y): the cowboys have big
+   heads, which is only fair. Seated (on a horse, in a cart) it is the seat
+   plus the body; standing (behind a rock, on a rope, aboard) the body. */
+const HEAD_UP = {bandit: 1.95, thrower: 1.95, rider: 2.1, cart: 2.1, swinger: 1.45};
+export const HEAD_R = 0.3;
+export function headOf(f){
+  const h = HEAD_UP[f.type];
+  if(h == null) return null;
+  return [f.x, f.y + (f.st === 'aboard' ? 1.45 : h), f.z];
+}
 
 export const STAGES = [
   {key: 'flats',  name: 'Dusty Flats',     blurb: 'Riders on the open plain',            walls: 0,   rim: 0,  menu: [['rider', 2], ['bandit', 1], ['tumble', 0.5]]},
@@ -58,14 +77,14 @@ export const ENEMIES = {
   bat:      {hp: 1,  r: 0.45, h: 0,   pts: 50,  name: 'bat'},
   cart:     {hp: 4,  r: 0.8,  h: 1.3, pts: 150, name: 'mine cart'},
   swinger:  {hp: 2,  r: 0.6,  h: 1.0, pts: 150, name: 'rope bandit'},
-  balloon:  {hp: 45, r: 3.2,  h: 0,   pts: 2500, name: 'Balloon Baron'},
+  balloon:  {hp: 80, r: 3.2,  h: 0,   pts: 2500, name: 'Balloon Baron'},
   crate:    {hp: 1,  r: 0.6,  h: 0.4, pts: 0,   name: 'supply crate'},
   tumble:   {hp: 1,  r: 0.6,  h: 0.5, pts: 25,  name: 'tumbleweed'},
 };
 export const ENEMY_LIST = Object.keys(ENEMIES);
 const ST = ['ride', 'station', 'aim', 'hide', 'up', 'board', 'aboard', 'fly', 'circle', 'dive', 'peck', 'swing', 'fall', 'float', 'roll', 'idle', 'wait'];
 
-export const BREAK_TIME = 10;
+export const BREAK_TIME = 4;      // the count after RIDE ON
 export const COUNT_TIME = 4;
 
 /* ---------- small kit ---------- */
@@ -130,7 +149,7 @@ export function join(S, id, name){
     let seat = 1;
     while(seats.indexOf(seat) >= 0) seat++;
     p = S.players[id] = {id, name: name || 'Gunslinger', color, seat, rank: 0, x: 0, z: 0.2,
-      aim: [0, 0, -1], firing: false, tg: 0, cd: 0, ammo: GUN.rounds, rl: 0, dry: 0, away: false,
+      aim: [0, 0, -1], firing: false, tg: 0, cd: 0, w: 0, bag: GUNS.map(g => g.rounds), ammo: GUN.rounds, rl: 0, dry: 0, away: false, heads: 0,
       score: 0, kills: 0, shots: 0, hits: 0, defused: 0, critters: 0, bosses: 0, crates: 0};
   }
   p.name = name || p.name;
@@ -177,7 +196,13 @@ export function input(S, id, d){
     if(p.seq != null && d.sh !== p.seq) p.pull = Math.min(3, (p.pull || 0) + ((d.sh - p.seq + 1000) % 1000));
     p.seq = d.sh;
   }
-  if(d.rl && p.rl <= 0 && p.ammo < GUN.rounds) p.rl = GUN.reload;
+  // which gun: each keeps its own load; changing takes a moment
+  const w = d.w | 0;
+  if(Number.isFinite(d.w) && w !== p.w && w >= 0 && w < GUNS.length && p.rl <= 0){
+    p.bag[p.w] = p.ammo; p.w = w; p.ammo = p.bag[w]; p.cd = Math.max(p.cd, 0.4); p.pull = 0;
+    p.dry = p.ammo <= 0 ? GUNS[w].autoReload : 0;
+  }
+  if(d.rl && p.rl <= 0 && p.ammo < GUNS[p.w].rounds) p.rl = GUNS[p.w].reload;
   if(Number.isFinite(d.seat)) setSeat(S, id, d.seat);
 }
 
@@ -188,7 +213,7 @@ export function start(S){
   S.players = keep;
   Object.values(S.players).forEach(p => {
     if(p.away){ delete S.players[p.id]; return; }
-    Object.assign(p, {cd: 0, firing: false, ammo: GUN.rounds, rl: 0, dry: 0,
+    Object.assign(p, {cd: 0, firing: false, bag: GUNS.map(g => g.rounds), ammo: GUNS[p.w || 0].rounds, rl: 0, dry: 0, heads: 0,
       score: 0, kills: 0, shots: 0, hits: 0, defused: 0, critters: 0, bosses: 0, crates: 0});
   });
   placeBench(S);
@@ -521,17 +546,30 @@ export function centre(f){ const T = ENEMIES[f.type]; return [f.x, f.y + T.h, f.
 /* Only a bandit who is up from behind his rock can be hit. */
 export function hittable(f){ return !f.dead && !((f.type === 'bandit' || f.type === 'thrower') && f.st === 'hide'); }
 
-function rayHits(S, ox, oy, oz, dx, dy, dz){
-  const out = [];
+/* How close the ray (o + d t) passes to point c: {t, miss}. */
+function pass(o, d, c){
+  const vx = c[0] - o[0], vy = c[1] - o[1], vz = c[2] - o[2];
+  const t = vx * d[0] + vy * d[1] + vz * d[2];
+  return {t, miss: Math.hypot(vx - d[0] * t, vy - d[1] * t, vz - d[2] * t)};
+}
+/* Was it the head? Within the head's radius (a touch more far off). */
+function inHead(f, o, d){
+  const h = headOf(f);
+  if(!h) return false;
+  const q = pass(o, d, h);
+  return q.t > 0 && q.miss < HEAD_R + q.t * 0.002;
+}
+function rayHits(S, ox, oy, oz, dx, dy, dz, W){
+  W = W || GUN;
+  const out = [], o = [ox, oy, oz], d = [dx, dy, dz];
   for(const f of S.foes){
     if(!hittable(f)) continue;
-    const c = centre(f), T = ENEMIES[f.type];
-    const vx = c[0] - ox, vy = c[1] - oy, vz = c[2] - oz;
-    const t = vx * dx + vy * dy + vz * dz;
-    if(t <= 0 || t > GUN.range) continue;
-    const miss = Math.hypot(vx - dx * t, vy - dy * t, vz - dz * t);
-    const r = T.r * GUN.assist + 0.15 + t * 0.007;
-    if(miss < r) out.push({f, t});
+    const T = ENEMIES[f.type];
+    const q = pass(o, d, centre(f));
+    if(q.t <= 0 || q.t > W.range) continue;
+    const r = T.r * W.assist + 0.15 + q.t * 0.007;
+    if(q.miss < r) out.push({f, t: q.t, head: W.head && inHead(f, o, d)});
+    else if(W.head && inHead(f, o, d)) out.push({f, t: q.t, head: true});
   }
   return out.sort((a, b) => a.t - b.t);
 }
@@ -560,18 +598,33 @@ function trusted(S, p, ox, oy, oz){
 }
 
 function fire(S, p){
-  p.cd = GUN.cool;
+  const W = GUNS[p.w];
+  p.cd = W.cool;
   p.ammo--;
   p.shots++;
-  const ox = p.x, oy = EYE - 0.1, oz = p.z;
-  const dir = p.tg ? p.aim : spreadDir(S, p.aim, GUN.spread);
-  let list = rayHits(S, ox, oy, oz, dir[0], dir[1], dir[2]);
-  const t = trusted(S, p, ox, oy, oz);
-  if(t) list = [t].concat(list.filter(h => h.f !== t.f));
-  const h = list[0];
-  if(h){ hurt(S, h.f, GUN.dmg, p); p.hits++; }
-  S.ev.push(['shot', p.color, r2(ox), r2(oy), r2(oz), r2(dir[0]), r2(dir[1]), r2(dir[2]), h ? r1(h.t) : GUN.range, h ? h.f.id : 0]);
-  if(p.ammo <= 0) p.dry = GUN.autoReload;
+  const ox = p.x, oy = EYE - 0.1, oz = p.z, o = [ox, oy, oz];
+  let landed = false;
+  for(let k = 0; k < W.pellets; k++){
+    const dir = W.pellets === 1 && p.tg ? p.aim : spreadDir(S, p.aim, W.spread);
+    let list = rayHits(S, ox, oy, oz, dir[0], dir[1], dir[2], W);
+    if(k === 0){
+      const t = trusted(S, p, ox, oy, oz);
+      if(t && W.pellets === 1){ t.head = W.head && inHead(t.f, o, dir); list = [t].concat(list.filter(h => h.f !== t.f)); }
+    }
+    const h = list.find(x => !x.f.dead);
+    if(h){
+      landed = true;
+      if(h.head){
+        // a headshot: down in one, whoever he is
+        p.heads++; p.score += 50;
+        S.ev.push(['headshot', h.f.id, p.color]);
+        hurt(S, h.f, h.f.hp, p);
+      } else hurt(S, h.f, W.dmg * (W.falloff ? Math.max(0.25, 1 - h.t / W.falloff) : 1), p);
+    }
+    if(k === 0 || W.pellets > 1) S.ev.push(['shot', p.color, r2(ox), r2(oy), r2(oz), r2(dir[0]), r2(dir[1]), r2(dir[2]), h ? r1(h.t) : W.range, h ? h.f.id : 0, p.w]);
+  }
+  if(landed) p.hits++;
+  if(p.ammo <= 0) p.dry = W.autoReload;
 }
 
 function hurt(S, f, dmg, p){
@@ -615,7 +668,7 @@ function playerStep(S, p, dt){
   if(p.away) return;
   if(p.rl > 0){
     p.rl -= dt;
-    if(p.rl <= 0){ p.rl = 0; p.ammo = GUN.rounds; p.dry = 0; S.ev.push(['loaded', p.color]); }
+    if(p.rl <= 0){ p.rl = 0; p.ammo = GUNS[p.w].rounds; p.dry = 0; S.ev.push(['loaded', p.color]); }
     p.pull = 0;
     return;
   }
@@ -623,7 +676,7 @@ function playerStep(S, p, dt){
     // empty: it reloads itself, a little slower than a flick
     p.pull = 0;
     p.dry -= dt;
-    if(p.dry <= 0){ p.rl = GUN.reload * 0.25; }
+    if(p.dry <= 0){ p.rl = GUNS[p.w].reload * 0.25; }
     return;
   }
   if(!(p.firing || p.pull > 0) || p.cd > 0) return;
@@ -639,7 +692,11 @@ export function step(S, dt){
   if(S.phase === 'over'){ S.phaseT += dt; return; }
   S.dist += SPEED * dt;
   const d = difficulty(S);
-  if(S.phase === 'count' || S.phase === 'break'){
+  if(S.phase === 'break' && S.hold){
+    // stopped at a waystation until somebody says ride on (next())
+    S.dist -= SPEED * dt;
+    S.phaseT += dt;
+  } else if(S.phase === 'count' || S.phase === 'break'){
     S.phaseT -= dt;
     if(S.phaseT <= 0) startWave(S);
   } else if(S.phase === 'wave'){
@@ -653,8 +710,10 @@ export function step(S, dt){
     }
     const left = S.foes.some(f => !f.dead && f.type !== 'crate' && f.type !== 'tumble');
     if(P.sent >= P.groups.length && !left){
-      S.phase = 'break'; S.phaseT = BREAK_TIME;
+      // through: the wagon stops until somebody taps RIDE ON (next())
+      S.phase = 'break'; S.phaseT = 0; S.hold = true;
       S.hp = Math.min(HP_MAX, S.hp + 20);
+      Object.values(S.players).forEach(p => { p.bag = GUNS.map(g => g.rounds); p.ammo = GUNS[p.w].rounds; p.rl = 0; p.dry = 0; });
       S.foes.forEach(f => { f.gone = true; });
       S.ev.push(['clear', S.wave, S.stage]);
     }
@@ -663,6 +722,15 @@ export function step(S, dt){
   for(const p of Object.values(S.players)) playerStep(S, p, dt);
   S.hitT = Math.max(0, S.hitT - dt);
   S.foes = S.foes.filter(f => !f.dead && !f.gone);
+}
+
+/* Ride on: from the stop between stages, the next one after a short count. */
+export function next(S, id){
+  if(S.phase !== 'break' || !S.hold) return false;
+  S.hold = false; S.phaseT = BREAK_TIME;
+  const p = id && S.players[id];
+  S.ev.push(['rideon', p ? p.color : -1]);
+  return true;
 }
 
 /* ---------- the wire ---------- */
@@ -675,10 +743,10 @@ export function snap(S){
   }
   const pl = Object.values(S.players).map(p => ({
     id: p.id, n: p.name, c: p.color, x: r2(p.x), z: r2(p.z), seat: p.seat, rk: p.rank,
-    a: [r2(p.aim[0]), r2(p.aim[1]), r2(p.aim[2])], f: p.firing ? 1 : 0, am: p.ammo, rl: p.rl > 0 ? 1 : 0, aw: p.away ? 1 : 0,
+    a: [r2(p.aim[0]), r2(p.aim[1]), r2(p.aim[2])], f: p.firing ? 1 : 0, w: p.w, am: p.ammo, rl: p.rl > 0 ? 1 : 0, hd: p.heads, aw: p.away ? 1 : 0,
     s: Math.round(p.score), k: p.kills, sh: p.shots, hi: p.hits, df: p.defused, cr: p.critters, bs: p.bosses,
   }));
-  const out = {t: 's', mode: 'wagon', ph: S.phase, pt: r1(S.phaseT), w: S.wave, sg: S.stage, hp: Math.round(S.hp), hit: S.hitT > 0 ? 1 : 0,
+  const out = {t: 's', mode: 'wagon', ph: S.phase, pt: r1(S.phaseT), hold: S.phase === 'break' && S.hold ? 1 : 0, w: S.wave, sg: S.stage, hp: Math.round(S.hp), hit: S.hitT > 0 ? 1 : 0,
     dist: Math.round(S.dist), m, pl, ev: S.ev, boss: S.boss || 0, why: S.why};
   S.ev = [];
   return out;
@@ -695,6 +763,7 @@ export function awards(players){
   };
   const pick = (p, name) => { if(p && !out[p.id]) out[p.id] = name; };
   pick(best(p => p.bs), 'Balloon Popper');
+  pick(best(p => p.hd || 0, 2), 'Dead Shot');
   pick(best(p => p.k), 'Quickest Draw');
   pick(best(p => p.df), 'Dynamite Defuser');
   pick(best(p => p.cr, 2), 'Varmint Hunter');

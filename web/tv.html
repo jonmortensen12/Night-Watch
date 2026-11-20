@@ -377,6 +377,7 @@ function onSnap(s){
     $('hullBar').classList.toggle('low', s.hull < 35);
   }
   if(phase === 'count') banner(String(Math.ceil(s.pt)), 'Point at the TV and tap LOCK FRONT');
+  else if(phase === 'break' && mode === 'wagon' && s.hold) banner((W_STAGES[s.sg] || W_STAGES[0]).name.toUpperCase() + ' - THROUGH!', 'Pulled up. Next: ' + W_STAGES[(s.sg + 1) % W_STAGES.length].name + '. Tap RIDE ON on a phone (or press Enter) when everybody is ready');
   else if(phase === 'break' && mode === 'wagon') banner((W_STAGES[s.sg] || W_STAGES[0]).name.toUpperCase() + ' - THROUGH!', 'Next: ' + W_STAGES[(s.sg + 1) % W_STAGES.length].name + ' in ' + Math.ceil(s.pt));
   else if(phase === 'break') banner('WAVE ' + s.w + ' CLEARED', 'Next wave in ' + Math.ceil(s.pt));
   if(phase === 'over' && was !== 'over') results();
@@ -574,7 +575,7 @@ $('modePick').addEventListener('click', e => {
 addEventListener('keydown', e => {
   soundTap();
   if(host && (e.key === '1' || e.key === '2' || e.key === '3')) host.setMode({1: 'space', 2: 'zombie', 3: 'wagon'}[e.key]);
-  if(e.key === 'Enter' && host) host.go();
+  if(e.key === 'Enter' && host) host.key('go');      // a game, or (the wagon) ride on from a stop
   if(e.key === 'f' || e.key === 'F'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }
   if(e.key === 'm' || e.key === 'M'){ SND.setMusic(!SND.musicEnabled()); }
 });
