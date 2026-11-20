@@ -49,7 +49,7 @@ export function createWagonPhone(ctx){
       #wbarIn.low { background: linear-gradient(90deg, #ff3020, #ff8040); }
       #wui #wgun { right: 22px; bottom: calc(132px + env(safe-area-inset-bottom)); width: 84px; height: 46px; border-radius: 23px; font-size: 11px; letter-spacing: 0.06em; line-height: 1.15; }
       #wui #wgun b { font-size: 13px; }
-      #wui #wride { left: 50%; top: 58%; transform: translate(-50%, -50%); width: auto; height: auto; padding: 18px 34px; border-radius: 40px; font: 900 26px system-ui; letter-spacing: 0.06em;
+      #wui #wride { white-space: nowrap; left: 50%; top: 58%; transform: translate(-50%, -50%); width: auto; height: auto; padding: 18px 34px; border-radius: 40px; font: 900 26px system-ui; letter-spacing: 0.06em;
         background: #c0601acc; border: 2px solid #ffd090; box-shadow: 0 0 26px #ff9040; display: none; animation: wpulse 0.8s infinite alternate; }
       #wui #wride small { font: 700 12px system-ui; letter-spacing: 0.04em; opacity: 0.9; margin-top: 4px; }
       #whead { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%) scale(1); z-index: 5; pointer-events: none; font: 900 34px system-ui; letter-spacing: 0.08em; color: #ffd040; text-shadow: 0 0 12px #ff6020, 0 2px 4px #000; opacity: 0; transition: opacity 0.25s, transform 0.25s; }
